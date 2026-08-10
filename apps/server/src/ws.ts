@@ -40,6 +40,7 @@ import {
   ProjectSearchContentsError,
   ProjectSearchEntriesError,
   ProjectWriteFileError,
+  JiraError,
   RelayClientInstallFailedError,
   type RelayClientInstallProgressEvent,
   type ServerSelfUpdateError,
@@ -83,6 +84,8 @@ import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner
 import * as ServerSelfUpdate from "./cloud/selfUpdate.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
+import * as Jira from "./jira.ts";
+import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
@@ -373,6 +376,7 @@ const makeWsRpcLayer = (
       const config = yield* ServerConfig.ServerConfig;
       const lifecycleEvents = yield* ServerLifecycleEvents.ServerLifecycleEvents;
       const serverSettings = yield* ServerSettings.ServerSettingsService;
+      const secretStore = yield* ServerSecretStore.ServerSecretStore;
       const startup = yield* ServerRuntimeStartup.ServerRuntimeStartup;
       const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
       const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
@@ -1565,6 +1569,33 @@ const makeWsRpcLayer = (
           observeRpcEffect(WS_METHODS.serverGetUsageSummary, usage.readSummary(input), {
             "rpc.aggregate": "server",
           }),
+        [WS_METHODS.serverJiraMyIssues]: (_input) =>
+          observeRpcEffect(
+            WS_METHODS.serverJiraMyIssues,
+            Effect.gen(function* () {
+              const settings = yield* serverSettings.getSettings;
+              const token = yield* secretStore.get(Jira.JIRA_TOKEN_SECRET_NAME).pipe(
+                Effect.map(Option.map((bytes) => new TextDecoder().decode(bytes))),
+                Effect.orElseSucceed(() => Option.none<string>()),
+              );
+              if (
+                settings.jiraSite.length === 0 ||
+                settings.jiraEmail.length === 0 ||
+                Option.isNone(token)
+              ) {
+                return yield* new JiraError({
+                  reason: "not-configured",
+                  detail: "Add your Jira site, email, and API token in Settings → Connections.",
+                });
+              }
+              return yield* Jira.fetchMyJiraIssues({
+                site: settings.jiraSite,
+                email: settings.jiraEmail,
+                token: token.value,
+              });
+            }),
+            { "rpc.aggregate": "server" },
+          ),
         [WS_METHODS.serverRetryResourceTelemetry]: (_input) =>
           observeRpcEffect(WS_METHODS.serverRetryResourceTelemetry, resourceTelemetry.retry, {
             "rpc.aggregate": "server",

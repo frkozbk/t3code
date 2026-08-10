@@ -568,6 +568,16 @@ export const ServerSettings = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(true)),
   ),
   addProjectBaseDirectory: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  // Personal Jira issue picker in the composer. The API token follows the same
+  // shape as a sensitive provider environment variable: `jiraToken` is a
+  // write-only channel that the server moves into `ServerSecretStore` on
+  // persist, leaving the field empty and `jiraTokenRedacted` recording that a
+  // secret exists. The token is never written to settings.json and never sent
+  // to a client.
+  jiraSite: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  jiraEmail: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  jiraToken: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  jiraTokenRedacted: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   textGenerationModelSelection: ModelSelection.pipe(
     Schema.withDecodingDefault(
       Effect.succeed({
@@ -722,6 +732,12 @@ export const ServerSettingsPatch = Schema.Struct({
   defaultThreadEnvMode: Schema.optionalKey(ThreadEnvMode),
   newWorktreesStartFromOrigin: Schema.optionalKey(Schema.Boolean),
   addProjectBaseDirectory: Schema.optionalKey(TrimmedString),
+  jiraSite: Schema.optionalKey(TrimmedString),
+  jiraEmail: Schema.optionalKey(TrimmedString),
+  // Send a non-empty `jiraToken` to store a new token. To forget the stored
+  // one, send `jiraTokenRedacted: false`; omitting both keeps it as-is.
+  jiraToken: Schema.optionalKey(TrimmedString),
+  jiraTokenRedacted: Schema.optionalKey(Schema.Boolean),
   textGenerationModelSelection: Schema.optionalKey(ModelSelectionPatch),
   sourceControlWritingStyle: Schema.optionalKey(
     Schema.Struct({

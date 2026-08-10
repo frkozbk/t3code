@@ -714,6 +714,11 @@ export function createServerEnvironmentAtoms<R, E>(
       tag: WS_METHODS.serverGetUsageSummary,
       staleTimeMs: 60_000,
     }),
+    jiraMyIssues: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:jira-my-issues",
+      tag: WS_METHODS.serverJiraMyIssues,
+      staleTimeMs: 60_000,
+    }),
     configProjection,
     welcome: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
       label: "environment-data:server:welcome",

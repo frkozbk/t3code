@@ -51,6 +51,7 @@ import {
   isModelSelectionProviderEnabled,
 } from "@t3tools/shared/serverSettings";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
+import { JIRA_TOKEN_SECRET_NAME } from "./jira.ts";
 
 export { resolveSourceControlWriterModelSelection } from "@t3tools/shared/serverSettings";
 
@@ -109,7 +110,7 @@ export function redactServerSettingsForClient(settings: ServerSettings): ServerS
         : instance,
     ]),
   );
-  return { ...settings, providerInstances };
+  return { ...settings, providerInstances, jiraToken: "" };
 }
 
 export class ServerSettingsService extends Context.Service<
@@ -476,6 +477,36 @@ const make = Effect.gen(function* () {
       };
     });
 
+  /**
+   * Moves a freshly submitted Jira token into the secret store. `jiraToken` is
+   * a write-only channel: after this runs it is always empty on disk, and
+   * `jiraTokenRedacted` records whether a secret sits behind it. Clearing is
+   * explicit (`jiraTokenRedacted: false` with an empty token) so that a patch
+   * which never mentions Jira leaves the stored token alone.
+   */
+  const persistJiraToken = (
+    next: ServerSettings,
+  ): Effect.Effect<ServerSettings, ServerSettingsError> =>
+    Effect.gen(function* () {
+      const asSettingsError = (operation: "write-secret" | "remove-secret") =>
+        Effect.mapError(
+          (cause: ServerSecretStore.SecretStoreError) =>
+            new ServerSettingsError({ settingsPath, operation, cause }),
+        );
+
+      if (next.jiraToken.length > 0) {
+        yield* secretStore
+          .set(JIRA_TOKEN_SECRET_NAME, textEncoder.encode(next.jiraToken))
+          .pipe(asSettingsError("write-secret"));
+        return { ...next, jiraToken: "", jiraTokenRedacted: true };
+      }
+      if (next.jiraTokenRedacted) {
+        return next;
+      }
+      yield* secretStore.remove(JIRA_TOKEN_SECRET_NAME).pipe(asSettingsError("remove-secret"));
+      return next;
+    });
+
   const writeSettingsAtomically = Effect.fnUntraced(
     function* (settings: ServerSettings) {
       const sparseSettingsJson = yield* encodeServerSettingsJson(
@@ -582,7 +613,7 @@ const make = Effect.gen(function* () {
           const nextPersisted = yield* persistProviderEnvironmentSecrets(
             current,
             applyServerSettingsPatch(current, patch),
-          );
+          ).pipe(Effect.flatMap(persistJiraToken));
           const next = yield* normalizeServerSettings(nextPersisted);
           yield* writeSettingsAtomically(next);
           yield* Cache.set(settingsCache, cacheKey, next);

@@ -51,6 +51,7 @@ import {
   ReviewDiffPreviewInput,
   ReviewDiffPreviewResult,
 } from "./review.ts";
+import { JiraError, JiraIssue } from "./jira.ts";
 import { KeybindingsConfigError } from "./keybindings.ts";
 import {
   ClientOrchestrationCommand,
@@ -246,6 +247,7 @@ export const WS_METHODS = {
   serverReportHostPowerState: "server.reportHostPowerState",
   serverGetBackgroundPolicy: "server.getBackgroundPolicy",
   serverGetUsageSummary: "server.getUsageSummary",
+  serverJiraMyIssues: "server.jiraMyIssues",
 
   // Cloud environment methods
   cloudGetRelayClientStatus: "cloud.getRelayClientStatus",
@@ -387,6 +389,12 @@ export const WsServerGetUsageSummaryRpc = Rpc.make(WS_METHODS.serverGetUsageSumm
   payload: UsageSummaryInput,
   success: UsageSummary,
   error: Schema.Union([EnvironmentAuthorizationError, UsageReadError]),
+});
+
+export const WsServerJiraMyIssuesRpc = Rpc.make(WS_METHODS.serverJiraMyIssues, {
+  payload: Schema.Struct({}),
+  success: Schema.Array(JiraIssue),
+  error: Schema.Union([JiraError, ServerSettingsError, EnvironmentAuthorizationError]),
 });
 
 export const WsServerSignalProcessRpc = Rpc.make(WS_METHODS.serverSignalProcess, {
@@ -828,6 +836,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetResourceTelemetryHistoryRpc,
   WsServerRetryResourceTelemetryRpc,
   WsServerGetUsageSummaryRpc,
+  WsServerJiraMyIssuesRpc,
   WsServerSignalProcessRpc,
   WsServerReportClientActivityRpc,
   WsServerReportHostPowerStateRpc,

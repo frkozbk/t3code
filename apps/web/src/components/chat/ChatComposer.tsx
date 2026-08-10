@@ -62,6 +62,7 @@ import {
   type PromptStashEntry,
 } from "../../promptStashStore";
 import { ComposerStashBadge } from "./ComposerStashBadge";
+import { JiraIssuePicker } from "./JiraIssuePicker";
 import { ComposerStashMenu } from "./ComposerStashMenu";
 import { compressImageForStash, compressImageToByteLimit } from "../../lib/imageCompression";
 import { isCommandPaletteOpen } from "../../commandPaletteBus";
@@ -3145,6 +3146,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     onInstanceModelChange={onProviderModelSelect}
                   />
                 )}
+
+                <JiraIssuePicker
+                  environmentId={environmentId}
+                  compact={isComposerFooterCompact}
+                  onInsert={(text) => {
+                    insertComposerTextAtEnd(text, { ensureLeadingBoundary: true });
+                  }}
+                />
 
                 {isComposerFooterCompact ? (
                   <CompactComposerControlsMenu

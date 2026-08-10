@@ -37,6 +37,7 @@ import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
+import { usePrimarySettings, useUpdatePrimarySettings } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
 import { formatElapsedDurationLabel, formatExpiresInLabel } from "../../timestampFormat";
 import { resolveDesktopPairingUrl, resolveHostedPairingUrl } from "./pairingUrls";
@@ -53,6 +54,7 @@ import {
 } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { Input } from "../ui/input";
+import { DraftInput } from "../ui/draft-input";
 import { Checkbox } from "../ui/checkbox";
 import {
   Dialog,
@@ -3431,6 +3433,92 @@ export function ConnectionsSettings() {
           savedEnvironments={savedEnvironments}
         />
       </SettingsSection>
+
+      <JiraSettingsSection />
     </SettingsPageContainer>
+  );
+}
+
+/**
+ * Credentials for the composer's Jira issue picker. The token is write-only:
+ * it is posted once, stored in the server's secret store, and only ever read
+ * back as the `jiraTokenRedacted` flag.
+ */
+function JiraSettingsSection() {
+  const settings = usePrimarySettings();
+  const updateSettings = useUpdatePrimarySettings();
+  const [tokenDraft, setTokenDraft] = useState("");
+
+  return (
+    <SettingsSection {...searchableSetting("jira")}>
+      <SettingsRow
+        title="Site"
+        description="Your Atlassian Cloud host."
+        control={
+          <DraftInput
+            className="w-full sm:w-72"
+            value={settings.jiraSite}
+            onCommit={(next) => updateSettings({ jiraSite: next })}
+            placeholder="your-team.atlassian.net"
+            spellCheck={false}
+            aria-label="Jira site"
+          />
+        }
+      />
+      <SettingsRow
+        title="Account email"
+        description="The Atlassian account the API token belongs to."
+        control={
+          <DraftInput
+            className="w-full sm:w-72"
+            value={settings.jiraEmail}
+            onCommit={(next) => updateSettings({ jiraEmail: next })}
+            placeholder="you@example.com"
+            spellCheck={false}
+            aria-label="Jira account email"
+          />
+        }
+      />
+      <SettingsRow
+        title="API token"
+        description={
+          settings.jiraTokenRedacted
+            ? "A token is stored on this server. Paste a new one to replace it."
+            : "Create one at id.atlassian.com under Security → API tokens."
+        }
+        control={
+          <div className="flex w-full items-center gap-2 sm:w-72">
+            <Input
+              type="password"
+              className="min-w-0 flex-1"
+              value={tokenDraft}
+              onChange={(event) => setTokenDraft(event.target.value)}
+              placeholder={settings.jiraTokenRedacted ? "••••••••••••" : "Paste token"}
+              autoComplete="off"
+              aria-label="Jira API token"
+            />
+            <Button
+              size="sm"
+              disabled={tokenDraft.trim().length === 0}
+              onClick={() => {
+                updateSettings({ jiraToken: tokenDraft.trim() });
+                setTokenDraft("");
+              }}
+            >
+              Save
+            </Button>
+            {settings.jiraTokenRedacted ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => updateSettings({ jiraToken: "", jiraTokenRedacted: false })}
+              >
+                Clear
+              </Button>
+            ) : null}
+          </div>
+        }
+      />
+    </SettingsSection>
   );
 }
