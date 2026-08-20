@@ -4,6 +4,9 @@ import * as Schema from "effect/Schema";
 export const JiraIssue = Schema.Struct({
   key: Schema.String,
   summary: Schema.String,
+  status: Schema.String,
+  url: Schema.String,
+  prApprovals: Schema.optional(Schema.Number),
 });
 export type JiraIssue = typeof JiraIssue.Type;
 

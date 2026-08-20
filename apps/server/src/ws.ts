@@ -1590,11 +1590,12 @@ const makeWsRpcLayer = (
                   detail: "Add your Jira site, email, and API token in Settings → Connections.",
                 });
               }
-              return yield* Jira.fetchMyJiraIssues({
+              const issues = yield* Jira.fetchMyJiraIssues({
                 site: settings.jiraSite,
                 email: settings.jiraEmail,
                 token: token.value,
               });
+              return yield* Jira.enrichWithPrApprovals(issues, config.cwd);
             }),
             { "rpc.aggregate": "server" },
           ),

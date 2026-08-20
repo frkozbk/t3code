@@ -15,6 +15,8 @@ import { JiraError, type JiraIssue } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 
+import * as GitLabCli from "./sourceControl/GitLabCli.ts";
+
 export const JIRA_TOKEN_SECRET_NAME = "jira-api-token";
 
 export const JIRA_MY_ISSUES_JQL =
@@ -22,34 +24,113 @@ export const JIRA_MY_ISSUES_JQL =
 
 const MAX_ISSUES = 50;
 
-/**
- * Accepts whatever shape the user pasted into settings — bare host,
- * `https://…`, trailing slash — and returns the search endpoint URL.
- */
-export function jiraSearchUrl(site: string): string {
-  const host = site
+/** Normalizes whatever the user pasted — bare host, https://…, trailing slash. */
+export function jiraHost(site: string): string {
+  return site
     .trim()
     .replace(/^https?:\/\//i, "")
     .replace(/\/+$/, "");
-  return `https://${host}/rest/api/3/search/jql`;
+}
+
+export function jiraSearchUrl(site: string): string {
+  return `https://${jiraHost(site)}/rest/api/3/search/jql`;
 }
 
 export function jiraBasicAuthHeader(email: string, token: string): string {
   return `Basic ${Buffer.from(`${email}:${token}`, "utf8").toString("base64")}`;
 }
 
-/** Reads `{ issues: [{ key, fields: { summary } }] }`, skipping junk rows. */
-export function parseJiraIssues(body: unknown): readonly JiraIssue[] {
+/** Reads `{ issues: [{ key, fields: { summary, status } }] }`, skipping junk rows. */
+export function parseJiraIssues(body: unknown, site: string): readonly JiraIssue[] {
+  const host = jiraHost(site);
   const issues = (body as { readonly issues?: unknown } | null)?.issues;
   if (!Array.isArray(issues)) return [];
   return issues.flatMap((issue: unknown) => {
     const key = (issue as { readonly key?: unknown } | null)?.key;
     if (typeof key !== "string" || key.length === 0) return [];
-    const summary = (issue as { readonly fields?: { readonly summary?: unknown } } | null)?.fields
-      ?.summary;
-    return [{ key, summary: typeof summary === "string" ? summary : "" }];
+    const fields = (issue as { readonly fields?: unknown } | null)?.fields as
+      | { readonly summary?: unknown; readonly status?: { readonly name?: unknown } }
+      | undefined;
+    const summary = fields?.summary;
+    const status = fields?.status?.name;
+    return [
+      {
+        key,
+        summary: typeof summary === "string" ? summary : "",
+        status: typeof status === "string" ? status : "",
+        url: `https://${host}/browse/${key}`,
+      },
+    ];
   });
 }
+
+const CODE_REVIEW_STATUS = "CODE REVIEW";
+
+function fetchMrApprovalCount(
+  gitlab: GitLabCli.GitLabCli["Service"],
+  cwd: string,
+  issueKey: string,
+): Effect.Effect<number> {
+  return gitlab
+    .execute({
+      cwd,
+      args: [
+        "api",
+        `projects/:fullpath/merge_requests?state=all&search=${encodeURIComponent(issueKey)}&per_page=10`,
+      ],
+    })
+    .pipe(
+      Effect.flatMap((result) =>
+        Effect.try(() => {
+          const items = JSON.parse(result.stdout.trim()) as Array<{
+            iid: number;
+            source_branch: string;
+          }>;
+          const keyLower = issueKey.toLowerCase();
+          return Array.isArray(items)
+            ? items.find((m) => m.source_branch.toLowerCase().includes(keyLower))
+            : undefined;
+        }),
+      ),
+      Effect.flatMap((mr) => {
+        if (!mr) return Effect.succeed(0);
+        return gitlab
+          .execute({
+            cwd,
+            args: ["api", `projects/:fullpath/merge_requests/${mr.iid}/approvals`],
+          })
+          .pipe(
+            Effect.flatMap((r) =>
+              Effect.try(() => {
+                const data = JSON.parse(r.stdout.trim()) as { approved_by: unknown[] };
+                return Array.isArray(data?.approved_by) ? data.approved_by.length : 0;
+              }),
+            ),
+          );
+      }),
+      Effect.orElseSucceed(() => 0),
+    );
+}
+
+export const enrichWithPrApprovals = Effect.fn("Jira.enrichWithPrApprovals")(function* (
+  issues: readonly JiraIssue[],
+  cwd: string,
+) {
+  const codeReview = issues.filter((i) => i.status === CODE_REVIEW_STATUS);
+  if (codeReview.length === 0) return issues;
+
+  const gitlab = yield* GitLabCli.GitLabCli;
+  const counts = yield* Effect.all(
+    codeReview.map((issue) => fetchMrApprovalCount(gitlab, cwd, issue.key)),
+    { concurrency: 5 },
+  );
+
+  const approvalMap = new Map(codeReview.map((issue, i) => [issue.key, counts[i]!]));
+  return issues.map((issue) => {
+    const count = approvalMap.get(issue.key);
+    return count !== undefined ? { ...issue, prApprovals: count } : issue;
+  });
+});
 
 export const fetchMyJiraIssues = Effect.fn("Jira.fetchMyJiraIssues")(function* (input: {
   readonly site: string;
@@ -64,7 +145,7 @@ export const fetchMyJiraIssues = Effect.fn("Jira.fetchMyJiraIssues")(function* (
     }),
     HttpClientRequest.bodyJsonUnsafe({
       jql: JIRA_MY_ISSUES_JQL,
-      fields: ["summary"],
+      fields: ["summary", "status"],
       maxResults: MAX_ISSUES,
     }),
   );
@@ -90,5 +171,5 @@ export const fetchMyJiraIssues = Effect.fn("Jira.fetchMyJiraIssues")(function* (
       () => new JiraError({ reason: "request-failed", detail: "Jira returned a non-JSON body." }),
     ),
   );
-  return parseJiraIssues(body);
+  return parseJiraIssues(body, input.site);
 });
