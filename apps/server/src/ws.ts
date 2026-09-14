@@ -1606,6 +1606,35 @@ const makeWsRpcLayer = (
             }),
             { "rpc.aggregate": "server" },
           ),
+        [WS_METHODS.serverJiraTransitionIssue]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverJiraTransitionIssue,
+            Effect.gen(function* () {
+              const settings = yield* serverSettings.getSettings;
+              const token = yield* secretStore.get(Jira.JIRA_TOKEN_SECRET_NAME).pipe(
+                Effect.map(Option.map((bytes) => new TextDecoder().decode(bytes))),
+                Effect.orElseSucceed(() => Option.none<string>()),
+              );
+              if (
+                settings.jiraSite.length === 0 ||
+                settings.jiraEmail.length === 0 ||
+                Option.isNone(token)
+              ) {
+                return yield* new JiraError({
+                  reason: "not-configured",
+                  detail: "Add your Jira site, email, and API token in Settings → Connections.",
+                });
+              }
+              yield* Jira.transitionJiraIssueByStatusName({
+                site: settings.jiraSite,
+                email: settings.jiraEmail,
+                token: token.value,
+                issueKey: input.issueKey,
+                targetStatus: input.targetStatus,
+              });
+            }),
+            { "rpc.aggregate": "server" },
+          ),
         [WS_METHODS.serverRetryResourceTelemetry]: (_input) =>
           observeRpcEffect(WS_METHODS.serverRetryResourceTelemetry, resourceTelemetry.retry, {
             "rpc.aggregate": "server",

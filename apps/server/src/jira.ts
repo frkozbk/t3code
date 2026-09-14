@@ -20,7 +20,7 @@ import * as GitLabCli from "./sourceControl/GitLabCli.ts";
 export const JIRA_TOKEN_SECRET_NAME = "jira-api-token";
 
 export const JIRA_MY_ISSUES_JQL =
-  "assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC";
+  "assignee = currentUser() AND (statusCategory != Done OR updated >= -14d) ORDER BY updated DESC";
 
 const MAX_ISSUES = 50;
 
@@ -40,7 +40,7 @@ export function jiraBasicAuthHeader(email: string, token: string): string {
   return `Basic ${Buffer.from(`${email}:${token}`, "utf8").toString("base64")}`;
 }
 
-/** Reads `{ issues: [{ key, fields: { summary, status } }] }`, skipping junk rows. */
+/** Reads `{ issues: [{ key, fields: { summary, status, issuetype, priority } }] }`, skipping junk rows. */
 export function parseJiraIssues(body: unknown, site: string): readonly JiraIssue[] {
   const host = jiraHost(site);
   const issues = (body as { readonly issues?: unknown } | null)?.issues;
@@ -49,16 +49,34 @@ export function parseJiraIssues(body: unknown, site: string): readonly JiraIssue
     const key = (issue as { readonly key?: unknown } | null)?.key;
     if (typeof key !== "string" || key.length === 0) return [];
     const fields = (issue as { readonly fields?: unknown } | null)?.fields as
-      | { readonly summary?: unknown; readonly status?: { readonly name?: unknown } }
+      | {
+          readonly summary?: unknown;
+          readonly status?: {
+            readonly name?: unknown;
+            readonly statusCategory?: { readonly key?: unknown };
+          };
+          readonly issuetype?: { readonly name?: unknown; readonly iconUrl?: unknown };
+          readonly priority?: { readonly name?: unknown; readonly iconUrl?: unknown };
+        }
       | undefined;
     const summary = fields?.summary;
     const status = fields?.status?.name;
+    const statusCategory = fields?.status?.statusCategory?.key;
+    const issueType = fields?.issuetype?.name;
+    const issueTypeIconUrl = fields?.issuetype?.iconUrl;
+    const priority = fields?.priority?.name;
+    const priorityIconUrl = fields?.priority?.iconUrl;
     return [
       {
         key,
         summary: typeof summary === "string" ? summary : "",
         status: typeof status === "string" ? status : "",
         url: `https://${host}/browse/${key}`,
+        ...(typeof statusCategory === "string" ? { statusCategory } : {}),
+        ...(typeof issueType === "string" ? { issueType } : {}),
+        ...(typeof issueTypeIconUrl === "string" ? { issueTypeIconUrl } : {}),
+        ...(typeof priority === "string" ? { priority } : {}),
+        ...(typeof priorityIconUrl === "string" ? { priorityIconUrl } : {}),
       },
     ];
   });
@@ -145,7 +163,7 @@ export const fetchMyJiraIssues = Effect.fn("Jira.fetchMyJiraIssues")(function* (
     }),
     HttpClientRequest.bodyJsonUnsafe({
       jql: JIRA_MY_ISSUES_JQL,
-      fields: ["summary", "status"],
+      fields: ["summary", "status", "issuetype", "priority"],
       maxResults: MAX_ISSUES,
     }),
   );
@@ -173,3 +191,85 @@ export const fetchMyJiraIssues = Effect.fn("Jira.fetchMyJiraIssues")(function* (
   );
   return parseJiraIssues(body, input.site);
 });
+
+function jiraTransitionsUrl(site: string, issueKey: string): string {
+  return `https://${jiraHost(site)}/rest/api/3/issue/${encodeURIComponent(issueKey)}/transitions`;
+}
+
+/**
+ * Moves an issue to `targetStatus` by looking up the workflow-specific
+ * transition id first — Jira has no "set status" endpoint, only transitions.
+ */
+export const transitionJiraIssueByStatusName = Effect.fn("Jira.transitionJiraIssueByStatusName")(
+  function* (input: {
+    readonly site: string;
+    readonly email: string;
+    readonly token: string;
+    readonly issueKey: string;
+    readonly targetStatus: string;
+  }) {
+    const client = yield* HttpClient.HttpClient;
+    const authHeader = jiraBasicAuthHeader(input.email, input.token);
+    const url = jiraTransitionsUrl(input.site, input.issueKey);
+
+    const listResponse = yield* client
+      .execute(
+        HttpClientRequest.get(url).pipe(
+          HttpClientRequest.setHeaders({ authorization: authHeader, accept: "application/json" }),
+        ),
+      )
+      .pipe(
+        Effect.mapError(
+          (cause) => new JiraError({ reason: "request-failed", detail: cause.message }),
+        ),
+      );
+    if (listResponse.status < 200 || listResponse.status >= 300) {
+      return yield* new JiraError({
+        reason: "request-failed",
+        detail: `Jira returned HTTP ${listResponse.status} listing transitions.`,
+      });
+    }
+    const listBody = yield* listResponse.json.pipe(
+      Effect.mapError(
+        () => new JiraError({ reason: "request-failed", detail: "Jira returned a non-JSON body." }),
+      ),
+    );
+    const transitions = (listBody as { readonly transitions?: unknown } | null)?.transitions;
+    const match = Array.isArray(transitions)
+      ? transitions.find(
+          (t: unknown) =>
+            (t as { readonly to?: { readonly name?: unknown } } | null)?.to?.name ===
+            input.targetStatus,
+        )
+      : undefined;
+    const transitionId = (match as { readonly id?: unknown } | undefined)?.id;
+    if (typeof transitionId !== "string") {
+      return yield* new JiraError({
+        reason: "invalid-transition",
+        detail: `No transition from the current status to "${input.targetStatus}" exists in this issue's workflow.`,
+      });
+    }
+
+    const executeResponse = yield* client
+      .execute(
+        HttpClientRequest.post(url).pipe(
+          HttpClientRequest.setHeaders({
+            authorization: authHeader,
+            accept: "application/json",
+          }),
+          HttpClientRequest.bodyJsonUnsafe({ transition: { id: transitionId } }),
+        ),
+      )
+      .pipe(
+        Effect.mapError(
+          (cause) => new JiraError({ reason: "request-failed", detail: cause.message }),
+        ),
+      );
+    if (executeResponse.status < 200 || executeResponse.status >= 300) {
+      return yield* new JiraError({
+        reason: "request-failed",
+        detail: `Jira returned HTTP ${executeResponse.status} executing the transition.`,
+      });
+    }
+  },
+);

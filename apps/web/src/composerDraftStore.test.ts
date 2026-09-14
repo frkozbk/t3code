@@ -60,7 +60,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import {
   COMPOSER_DRAFT_STORAGE_KEY,
   clearComposerDraftsEnvironment,
+  consumePendingAutoSend,
   finalizePromotedDraftThreadByRef,
+  markPendingAutoSend,
   markPromotedDraftThread,
   markPromotedDraftThreadByRef,
   markPromotedDraftThreads,
@@ -1858,5 +1860,16 @@ describe("createDebouncedStorage", () => {
     vi.advanceTimersByTime(300);
     expect(base.setItem).toHaveBeenCalledTimes(1);
     expect(base.setItem).toHaveBeenCalledWith("key", "v2");
+  });
+});
+
+describe("pending auto-send", () => {
+  it("consumes the flag once and reports false afterwards", () => {
+    const draftId = DraftId.make("draft-auto-send");
+    expect(consumePendingAutoSend(draftId)).toBe(false);
+
+    markPendingAutoSend(draftId);
+    expect(consumePendingAutoSend(draftId)).toBe(true);
+    expect(consumePendingAutoSend(draftId)).toBe(false);
   });
 });

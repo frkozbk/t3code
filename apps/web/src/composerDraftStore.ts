@@ -3765,3 +3765,20 @@ export function finalizePromotedDraftThreadsByRef(
     finalizePromotedDraftThreadByRef(threadRef);
   }
 }
+
+/**
+ * Drafts awaiting an automatic send once their `ChatComposer` mounts with the
+ * prompt already in place (e.g. a skill run kicked off from the Jira board).
+ * Deliberately kept out of the persisted store — a page reload should never
+ * resurrect a queued auto-send.
+ */
+const pendingAutoSendDraftIds = new Set<string>();
+
+export function markPendingAutoSend(draftId: DraftId): void {
+  pendingAutoSendDraftIds.add(draftId);
+}
+
+/** Checks and clears the auto-send flag for a draft; returns false after the first call. */
+export function consumePendingAutoSend(draftId: DraftId): boolean {
+  return pendingAutoSendDraftIds.delete(draftId);
+}

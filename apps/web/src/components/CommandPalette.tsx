@@ -38,6 +38,7 @@ import {
   FileSearchIcon,
   FolderIcon,
   FolderPlusIcon,
+  KanbanIcon,
   LinkIcon,
   MessageSquareIcon,
   PaletteIcon,
@@ -1622,6 +1623,17 @@ function OpenCommandPaletteDialog(props: {
     icon: <SettingsIcon className={ITEM_ICON_CLASS} />,
     run: async () => {
       await navigate({ to: "/settings" });
+    },
+  });
+
+  actionItems.push({
+    kind: "action",
+    value: "action:jira-board",
+    searchTerms: ["jira", "board", "issues", "kanban"],
+    title: "Open Jira board",
+    icon: <KanbanIcon className={ITEM_ICON_CLASS} />,
+    run: async () => {
+      await navigate({ to: "/jira-board" });
     },
   });
 

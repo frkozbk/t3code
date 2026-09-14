@@ -719,6 +719,14 @@ export function createServerEnvironmentAtoms<R, E>(
       tag: WS_METHODS.serverJiraMyIssues,
       staleTimeMs: 60_000,
     }),
+    jiraTransitionIssue: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:jira-transition-issue",
+      tag: WS_METHODS.serverJiraTransitionIssue,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) => `${environmentId}:${input.issueKey}`,
+      },
+    }),
     configProjection,
     welcome: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
       label: "environment-data:server:welcome",

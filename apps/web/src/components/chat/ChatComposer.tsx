@@ -53,6 +53,7 @@ import {
   type ComposerImageAttachment,
   type DraftId,
   type PersistedComposerImageAttachment,
+  consumePendingAutoSend,
   hydrateImagesFromPersisted,
   useComposerDraftStore,
   useComposerThreadDraft,
@@ -1920,6 +1921,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       shouldBlurMobileComposerOnSubmit,
     ],
   );
+
+  // A skill run kicked off from outside a thread (e.g. the Jira board) marks
+  // its freshly created draft for auto-send. Consumed once, here, so the
+  // prompt it pre-filled goes out without the user having to hit send.
+  useEffect(() => {
+    if (draftId !== null && consumePendingAutoSend(draftId)) {
+      submitComposer();
+    }
+  }, [draftId, submitComposer]);
+
   const expandMobileComposer = useCallback(() => {
     if (composerBlurFrameRef.current !== null) {
       window.cancelAnimationFrame(composerBlurFrameRef.current);

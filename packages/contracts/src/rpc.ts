@@ -275,6 +275,7 @@ export const WS_METHODS = {
   serverGetBackgroundPolicy: "server.getBackgroundPolicy",
   serverGetUsageSummary: "server.getUsageSummary",
   serverJiraMyIssues: "server.jiraMyIssues",
+  serverJiraTransitionIssue: "server.jiraTransitionIssue",
 
   // Cloud environment methods
   cloudGetRelayClientStatus: "cloud.getRelayClientStatus",
@@ -440,6 +441,12 @@ export const WsServerGetUsageSummaryRpc = Rpc.make(WS_METHODS.serverGetUsageSumm
 export const WsServerJiraMyIssuesRpc = Rpc.make(WS_METHODS.serverJiraMyIssues, {
   payload: Schema.Struct({}),
   success: Schema.Array(JiraIssue),
+  error: Schema.Union([JiraError, ServerSettingsError, EnvironmentAuthorizationError]),
+});
+
+export const WsServerJiraTransitionIssueRpc = Rpc.make(WS_METHODS.serverJiraTransitionIssue, {
+  payload: Schema.Struct({ issueKey: Schema.String, targetStatus: Schema.String }),
+  success: Schema.Void,
   error: Schema.Union([JiraError, ServerSettingsError, EnvironmentAuthorizationError]),
 });
 
@@ -1009,6 +1016,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerRetryResourceTelemetryRpc,
   WsServerGetUsageSummaryRpc,
   WsServerJiraMyIssuesRpc,
+  WsServerJiraTransitionIssueRpc,
   WsServerSignalProcessRpc,
   WsServerReportClientActivityRpc,
   WsServerReportHostPowerStateRpc,
