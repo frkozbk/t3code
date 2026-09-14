@@ -22,7 +22,7 @@ export const JiraErrorReason = Schema.Literals([
 ]);
 export type JiraErrorReason = typeof JiraErrorReason.Type;
 
-export class JiraError extends Schema.TaggedErrorClass<JiraError>()("JiraError", {
+export class JiraError extends Schema.TaggedError<JiraError>()("JiraError", {
   reason: JiraErrorReason,
   detail: Schema.String,
 }) {
