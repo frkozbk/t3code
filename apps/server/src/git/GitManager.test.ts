@@ -293,6 +293,13 @@ function createTextGeneration(
       Effect.succeed({
         title: "Update workflow",
       }),
+    generateGuidedReview: () =>
+      Effect.succeed({
+        summary: "",
+        points: [],
+        flow: { caption: "", steps: [] },
+        chapters: [],
+      }),
     ...overrides,
   };
 
@@ -341,6 +348,7 @@ function createTextGeneration(
             }),
         ),
       ),
+    generateGuidedReview: (input) => implementation.generateGuidedReview(input),
   };
 }
 

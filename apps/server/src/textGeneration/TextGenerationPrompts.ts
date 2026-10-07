@@ -7,9 +7,9 @@
  * @module textGenerationPrompts
  */
 import * as Schema from "effect/Schema";
-import type { ChatAttachment } from "@t3tools/contracts";
+import { ReviewGuide, type ChatAttachment } from "@t3tools/contracts";
 
-import { limitSection } from "./TextGenerationUtils.ts";
+import { fitDiffToBudget, limitSection } from "./TextGenerationUtils.ts";
 import type { TextGenerationPolicy } from "./TextGenerationPolicy.ts";
 
 const EARLIER_CONTENT_TRUNCATION_MARKER = "[Earlier content truncated]\n\n";
@@ -135,6 +135,36 @@ export function buildPrContentPrompt(input: PrContentPromptInput) {
   });
 
   return { prompt, outputSchema };
+}
+
+// ---------------------------------------------------------------------------
+// Guided review
+// ---------------------------------------------------------------------------
+
+export function buildGuidedReviewPrompt(input: { diff: string }) {
+  const prompt = [
+    "You help a reviewer understand a code diff before they read it.",
+    "Return a JSON object with keys: summary, points, flow, chapters.",
+    "Rules:",
+    "- summary: 1-2 plain sentences on what this change does overall",
+    "- points: 3-5 short plain-language steps describing how the change works, in order",
+    "- flow.caption: a short phrase naming the behavior the flow traces",
+    "- flow.steps: 3-8 steps tracing the main runtime path through the code after this change, labeled with a short real function/component name (under 30 characters, no explanations)",
+    "- each flow step has added=true when this change introduces it, false when it already existed; chapter is the 1-based number of the chapter that introduces it, or 0",
+    "- chapters: group changed files by one idea each; every changed file appears in exactly one chapter",
+    "- chapter title is short; explanation is plain words on what changed and what to check",
+    "- files are paths exactly as they appear in the diff",
+    "- concerns: possible real problems in that chapter (bug, unhandled error, security risk, new logic without tests), each with the file path and one plain sentence",
+    "- only list a concern you can point to in the diff; return an empty array when nothing is clearly wrong, and never pad. At most 2 per chapter",
+    "- order chapters by review priority: the core change first; database/migrations, tests, and generated files last",
+    "",
+    "Large file diffs may be cut and marked [file diff truncated]; the file still changed, so still place it in a chapter.",
+    "",
+    "Diff:",
+    fitDiffToBudget(input.diff, 80_000),
+  ].join("\n");
+
+  return { prompt, outputSchema: ReviewGuide };
 }
 
 // ---------------------------------------------------------------------------

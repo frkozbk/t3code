@@ -137,6 +137,7 @@ import * as VcsDriverRegistry from "./vcs/VcsDriverRegistry.ts";
 import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
 import * as ReviewService from "./review/ReviewService.ts";
+import * as TextGeneration from "./textGeneration/TextGeneration.ts";
 import * as SourceControlRepositoryService from "./sourceControl/SourceControlRepositoryService.ts";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
@@ -587,6 +588,7 @@ const buildAppUnderTest = (options?: {
           ...options.layers.reviewService,
         })
       : ReviewService.layer.pipe(
+          Layer.provide(Layer.mock(TextGeneration.TextGeneration)({})),
           Layer.provideMerge(gitVcsDriverLayer),
           Layer.provide(vcsDriverRegistryLayer),
         );

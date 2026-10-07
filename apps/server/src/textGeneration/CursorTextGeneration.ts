@@ -13,6 +13,7 @@ import { TextGenerationError } from "@t3tools/contracts";
 import * as TextGeneration from "./TextGeneration.ts";
 import {
   buildBranchNamePrompt,
+  buildGuidedReviewPrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
@@ -54,7 +55,8 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "generateGuidedReview";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -259,10 +261,24 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
       } satisfies TextGeneration.ThreadTitleGenerationResult;
     });
 
+  const generateGuidedReview: TextGeneration.TextGeneration["Service"]["generateGuidedReview"] =
+    Effect.fn("CursorTextGeneration.generateGuidedReview")(function* (input) {
+      const { prompt, outputSchema } = buildGuidedReviewPrompt({ diff: input.diff });
+
+      return yield* runCursorJson({
+        operation: "generateGuidedReview",
+        cwd: input.cwd,
+        prompt,
+        outputSchemaJson: outputSchema,
+        modelSelection: input.modelSelection,
+      });
+    });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateGuidedReview,
   } satisfies TextGeneration.TextGeneration["Service"];
 });

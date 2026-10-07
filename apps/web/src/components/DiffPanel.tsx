@@ -6,7 +6,13 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
-import type { ScopedThreadRef, TurnId } from "@t3tools/contracts";
+import {
+  ProviderInstanceId,
+  type ModelSelection,
+  type ScopedThreadRef,
+  type TurnId,
+} from "@t3tools/contracts";
+import { createModelSelection } from "@t3tools/shared/model";
 import {
   ArrowRightIcon,
   CheckIcon,
@@ -17,13 +23,14 @@ import {
   Columns2Icon,
   PilcrowIcon,
   RefreshCwIcon,
+  SparklesIcon,
   Rows3Icon,
   SearchIcon,
   TextWrapIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { useOpenInPreferredEditor } from "../editorPreferences";
-import { type DraftId } from "../composerDraftStore";
+import { type DraftId, useComposerDraftModelState } from "../composerDraftStore";
 import { openDiffFilePrimaryAction } from "../diffFileActions";
 import { useCheckpointDiff } from "~/lib/checkpointDiffState";
 import { cn } from "~/lib/utils";
@@ -41,10 +48,22 @@ import { areAllDiffFilesCollapsed, toggleAllDiffFiles } from "../lib/diffCollaps
 import { useTurnDiffSummaries } from "../hooks/useTurnDiffSummaries";
 import { useProject, useThread } from "../state/entities";
 import { resolveThreadRouteRef } from "../threadRoutes";
-import { useClientSettings } from "../hooks/useSettings";
+import { useClientSettings, usePrimarySettings } from "../hooks/useSettings";
+import {
+  applyProviderInstanceSettings,
+  deriveProviderInstanceEntries,
+  sortProviderInstanceEntries,
+} from "../providerInstances";
+import { getCustomModelOptionsByInstance } from "../modelSelection";
+import { ProviderModelPicker } from "./chat/ProviderModelPicker";
 import { formatShortTimestamp } from "../timestampFormat";
 import { DiffPanelLoadingState, DiffPanelShell, type DiffPanelMode } from "./DiffPanelShell";
 import { DiffStatLabel } from "./chat/DiffStatLabel";
+import {
+  GuidedReviewPanel,
+  type GuidedReviewProgress,
+  type GuidedReviewState,
+} from "./GuidedReviewPanel";
 import { AnnotatableCodeView, type AnnotatableCodeViewHandle } from "./diffs/AnnotatableCodeView";
 import { Button } from "./ui/button";
 import { ToggleGroup, Toggle } from "./ui/toggle-group";
@@ -94,6 +113,12 @@ interface DiffPanelProps {
 
 export { DiffWorkerPoolProvider } from "./DiffWorkerPoolProvider";
 
+/** Guides default to a cheap, fast model; the composer's model is the fallback when it's unavailable. */
+const DEFAULT_GUIDE_MODEL = createModelSelection(
+  ProviderInstanceId.make("claudeAgent"),
+  "claude-sonnet-5",
+);
+
 export default function DiffPanel({
   mode = "inline",
   composerDraftTarget,
@@ -142,6 +167,21 @@ export default function DiffPanel({
     serverConfig?.availableEditors ?? [],
   );
   const getDiffFileContents = useAtomCommand(reviewEnvironment.diffFileContents);
+  const generateGuide = useAtomCommand(reviewEnvironment.generateGuide, { reportFailure: false });
+  const composerModelState = useComposerDraftModelState(composerDraftTarget);
+  const primarySettings = usePrimarySettings();
+  const [view, setView] = useState<"diff" | "overview" | "guide">("diff");
+  // User-picked model for guided reviews; null falls back to DEFAULT_GUIDE_MODEL or the composer's.
+  const [guideModel, setGuideModel] = useState<ModelSelection | null>(null);
+  const [guideProgress, setGuideProgress] = useState<GuidedReviewProgress>({
+    chapter: 0,
+    reviewed: new Set(),
+  });
+  // Keyed by patch so switching scope or refreshing the diff drops a stale guide.
+  const [guide, setGuide] = useState<{
+    readonly patch: string;
+    readonly state: GuidedReviewState;
+  } | null>(null);
   const gitStatusQuery = useEnvironmentQuery(
     activeThread !== null && activeThread !== undefined && activeCwd != null
       ? vcsEnvironment.status({
@@ -387,6 +427,75 @@ export default function DiffPanel({
   const selectedPatchError = selectedTurn ? activeCheckpointDiff.error : branchDiffPreview.error;
   const hasResolvedPatch = typeof selectedPatch === "string";
   const hasNoNetChanges = hasResolvedPatch && selectedPatch.trim().length === 0;
+  const defaultGuideModelAvailable = (serverConfig?.providers ?? []).some(
+    (provider) =>
+      provider.instanceId === DEFAULT_GUIDE_MODEL.instanceId &&
+      provider.enabled &&
+      provider.models.some((model) => model.slug === DEFAULT_GUIDE_MODEL.model),
+  );
+  const composerGuideModel =
+    (composerModelState.activeProvider
+      ? composerModelState.modelSelectionByProvider[composerModelState.activeProvider]
+      : undefined) ?? activeThread?.modelSelection;
+  const currentGuideModel =
+    guideModel ?? (defaultGuideModelAvailable ? DEFAULT_GUIDE_MODEL : composerGuideModel);
+  const startGuidedReview = (patch: string, modelSelection = currentGuideModel) => {
+    // Use the cwd the diff was actually read from, including the environment-cwd fallback.
+    const guideCwd = shouldRetryBranchDiffAtEnvironmentCwd ? serverConfig?.cwd : activeCwd;
+    if (!activeThread || !guideCwd || !modelSelection) return;
+    setGuide({ patch, state: { status: "loading" } });
+    setGuideProgress({ chapter: 0, reviewed: new Set() });
+    void generateGuide({
+      environmentId: activeThread.environmentId,
+      input: { cwd: guideCwd, diff: patch, modelSelection },
+    }).then((result) => {
+      if (result._tag === "Success") {
+        setGuide((current) =>
+          current?.patch === patch
+            ? { patch, state: { status: "ready", guide: result.value } }
+            : current,
+        );
+        return;
+      }
+      if (isAtomCommandInterrupted(result)) return;
+      const failure = squashAtomCommandFailure(result);
+      setGuide((current) =>
+        current?.patch === patch
+          ? {
+              patch,
+              state: {
+                status: "error",
+                message:
+                  failure instanceof Error
+                    ? failure.message
+                    : "Could not generate the guided review.",
+              },
+            }
+          : current,
+      );
+    });
+  };
+  const openGuidedReview = () => {
+    if (typeof selectedPatch !== "string") return;
+    if (guide?.patch === selectedPatch && guide.state.status !== "error") {
+      setView(view === "diff" ? "overview" : "diff");
+      return;
+    }
+    setView("overview");
+    startGuidedReview(selectedPatch);
+  };
+  const guideInstanceEntries = useMemo(
+    () =>
+      sortProviderInstanceEntries(
+        applyProviderInstanceSettings(
+          deriveProviderInstanceEntries(serverConfig?.providers ?? []),
+          primarySettings,
+        ),
+      ),
+    [primarySettings, serverConfig?.providers],
+  );
+  const guideState = guide && guide.patch === selectedPatch ? guide.state : null;
+  const showGuide = view !== "diff" && guideState !== null;
   const renderablePatch = useMemo(
     () =>
       getRenderablePatch(selectedPatch, `diff-panel:${resolvedTheme}`, {
@@ -503,6 +612,16 @@ export default function DiffPanel({
   const selectBranchBaseRef = (baseRef: string | null) => {
     if (!routeThreadRef) return;
     useDiffPanelStore.getState().selectBranchBaseRef(routeThreadRef, baseRef);
+  };
+
+  const codeViewOptions: ComponentProps<typeof AnnotatableCodeView>["options"] = {
+    diffStyle: diffRenderMode === "split" ? "split" : "unified",
+    lineDiffType: "none",
+    overflow: wordWrap ? "wrap" : "scroll",
+    theme: resolveDiffThemeName(resolvedTheme),
+    themeType: resolvedTheme as DiffThemeType,
+    stickyHeaders: true,
+    ...(loadDiffFiles ? { loadDiffFiles } : {}),
   };
 
   const headerRow = (
@@ -699,6 +818,36 @@ export default function DiffPanel({
             layout="inline"
           />
         )}
+        {hasResolvedPatch && !hasNoNetChanges && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  size="icon-sm"
+                  variant={showGuide ? "secondary" : "ghost"}
+                  aria-label={
+                    guideState === null
+                      ? "Make a guided review"
+                      : showGuide
+                        ? "Back to diff"
+                        : "Show guided review"
+                  }
+                  onClick={openGuidedReview}
+                />
+              }
+            >
+              <SparklesIcon className="size-3.5" />
+            </TooltipTrigger>
+            <TooltipPopup side="top">
+              {guideState === null
+                ? "Make a guided review"
+                : showGuide
+                  ? "Back to diff"
+                  : "Show guided review"}
+            </TooltipPopup>
+          </Tooltip>
+        )}
         {canRefreshGitDiff && (
           <Tooltip>
             <TooltipTrigger
@@ -837,7 +986,75 @@ export default function DiffPanel({
                 <p className="mb-2 text-[11px] text-error/80">{selectedPatchError}</p>
               </div>
             )}
-            {!renderablePatch ? (
+            {guideState !== null && (
+              <div className="flex shrink-0 gap-1 border-b border-border/70 px-3 py-1.5">
+                {(["overview", "guide", "diff"] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    className={cn(
+                      "rounded-md px-2.5 py-1 text-xs font-medium capitalize transition-colors",
+                      view === tab
+                        ? "bg-accent text-accent-foreground"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                    onClick={() => setView(tab)}
+                  >
+                    {tab}
+                  </button>
+                ))}
+                {currentGuideModel && (
+                  <div className="ml-auto">
+                    <ProviderModelPicker
+                      activeInstanceId={currentGuideModel.instanceId}
+                      model={currentGuideModel.model}
+                      lockedProvider={null}
+                      instanceEntries={guideInstanceEntries}
+                      modelOptionsByInstance={getCustomModelOptionsByInstance(
+                        primarySettings,
+                        serverConfig?.providers ?? [],
+                        currentGuideModel.instanceId,
+                        currentGuideModel.model,
+                      )}
+                      compact
+                      triggerVariant="ghost"
+                      triggerAriaLabel="Guided review model"
+                      onInstanceModelChange={(instanceId, model) => {
+                        const next = createModelSelection(instanceId, model);
+                        setGuideModel(next);
+                        if (typeof selectedPatch === "string")
+                          startGuidedReview(selectedPatch, next);
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+            {showGuide ? (
+              <GuidedReviewPanel
+                tab={view === "guide" ? "guide" : "overview"}
+                state={guideState}
+                files={codeViewFiles}
+                progress={guideProgress}
+                onProgressChange={setGuideProgress}
+                onRetry={() =>
+                  typeof selectedPatch === "string" && startGuidedReview(selectedPatch)
+                }
+                renderDiff={(files, key, viewerRef) => (
+                  <AnnotatableCodeView
+                    viewerRef={viewerRef}
+                    codeViewKey={key}
+                    className="h-full min-h-0 overflow-auto"
+                    files={files}
+                    sectionId={reviewSectionId}
+                    sectionTitle={reviewSectionTitle}
+                    composerDraftTarget={composerDraftTarget}
+                    renderHeaderPrefix={() => null}
+                    options={codeViewOptions}
+                  />
+                )}
+              />
+            ) : !renderablePatch ? (
               isLoadingSelectedPatch ? (
                 <DiffPanelLoadingState
                   label={
@@ -934,15 +1151,7 @@ export default function DiffPanel({
                       </Tooltip>
                     );
                   }}
-                  options={{
-                    diffStyle: diffRenderMode === "split" ? "split" : "unified",
-                    lineDiffType: "none",
-                    overflow: wordWrap ? "wrap" : "scroll",
-                    theme: resolveDiffThemeName(resolvedTheme),
-                    themeType: resolvedTheme as DiffThemeType,
-                    stickyHeaders: true,
-                    ...(loadDiffFiles ? { loadDiffFiles } : {}),
-                  }}
+                  options={codeViewOptions}
                 />
               </div>
             ) : (

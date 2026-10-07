@@ -3,11 +3,43 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
+  buildGuidedReviewPrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
 } from "./TextGenerationPrompts.ts";
-import { normalizeCliError, sanitizeThreadTitle } from "./TextGenerationUtils.ts";
+import { fitDiffToBudget, normalizeCliError, sanitizeThreadTitle } from "./TextGenerationUtils.ts";
 import { TextGenerationError } from "@t3tools/contracts";
+
+describe("buildGuidedReviewPrompt", () => {
+  it("embeds the diff and asks for priority-ordered chapters", () => {
+    const { prompt, outputSchema } = buildGuidedReviewPrompt({ diff: "diff --git a/x b/x" });
+
+    expect(prompt).toContain("diff --git a/x b/x");
+    expect(prompt).toContain("order chapters by review priority");
+    expect(Object.keys(outputSchema.fields)).toEqual(["summary", "points", "flow", "chapters"]);
+  });
+});
+
+describe("fitDiffToBudget", () => {
+  const section = (name: string, lines: number) =>
+    `diff --git a/${name} b/${name}\n${"+x\n".repeat(lines)}`;
+
+  it("returns a diff that already fits untouched", () => {
+    const diff = section("a.ts", 3);
+    expect(fitDiffToBudget(diff, 1_000)).toBe(diff);
+  });
+
+  it("keeps every file header when one huge file would eat the budget", () => {
+    const diff = section("big.ts", 5_000) + section("small.ts", 2) + section("last.ts", 2);
+    const fitted = fitDiffToBudget(diff, 1_000);
+
+    expect(fitted.length).toBeLessThanOrEqual(1_100);
+    expect(fitted).toContain("diff --git a/big.ts");
+    expect(fitted).toContain("diff --git a/last.ts");
+    expect(fitted).toContain("[file diff truncated]");
+    expect(fitted).toContain(section("small.ts", 2));
+  });
+});
 
 describe("buildCommitMessagePrompt", () => {
   it("includes staged patch and summary in the prompt", () => {
