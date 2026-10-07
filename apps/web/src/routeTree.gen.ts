@@ -168,8 +168,8 @@ export interface FileRoutesByFullPath {
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
-  '/jira-board': typeof ChatJiraBoardRoute
   '/welcome': typeof WelcomeRoute
+  '/jira-board': typeof ChatJiraBoardRoute
   '/pull-requests': typeof ChatPullRequestsRoute
   '/connect/callback': typeof ConnectCallbackRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
@@ -193,8 +193,8 @@ export interface FileRoutesByTo {
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
-  '/jira-board': typeof ChatJiraBoardRoute
   '/welcome': typeof WelcomeRoute
+  '/jira-board': typeof ChatJiraBoardRoute
   '/pull-requests': typeof ChatPullRequestsRoute
   '/connect/callback': typeof ConnectCallbackRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
@@ -221,8 +221,8 @@ export interface FileRoutesById {
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
-  '/_chat/jira-board': typeof ChatJiraBoardRoute
   '/welcome': typeof WelcomeRoute
+  '/_chat/jira-board': typeof ChatJiraBoardRoute
   '/_chat/pull-requests': typeof ChatPullRequestsRoute
   '/connect_/callback': typeof ConnectCallbackRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
@@ -250,8 +250,8 @@ export interface FileRouteTypes {
     | '/pair'
     | '/settings'
     | '/usage'
-    | '/jira-board'
     | '/welcome'
+    | '/jira-board'
     | '/pull-requests'
     | '/connect/callback'
     | '/projects/$projectKey'
@@ -275,8 +275,8 @@ export interface FileRouteTypes {
     | '/pair'
     | '/settings'
     | '/usage'
-    | '/jira-board'
     | '/welcome'
+    | '/jira-board'
     | '/pull-requests'
     | '/connect/callback'
     | '/projects/$projectKey'
@@ -302,8 +302,8 @@ export interface FileRouteTypes {
     | '/pair'
     | '/settings'
     | '/usage'
-    | '/_chat/jira-board'
     | '/welcome'
+    | '/_chat/jira-board'
     | '/_chat/pull-requests'
     | '/connect_/callback'
     | '/projects/$projectKey'

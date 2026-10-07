@@ -36,6 +36,7 @@ import { pullRequestFindingKey, type PullRequestFinding } from "./pullRequestDet
 import { canEditPullRequestComment } from "./pullRequestEditing.logic";
 import { orderDiffFiles } from "./pullRequestFileOrder.logic";
 import {
+  buildFileDiffContentVersion,
   buildFileDiffRenderKey,
   fnv1a32,
   getDiffLineStat,
@@ -439,6 +440,7 @@ function PullRequestCodeTab({
         fileDiff,
         filePath: resolveFileDiffPath(fileDiff),
         fileKey: buildFileDiffRenderKey(fileDiff),
+        fileVersion: buildFileDiffContentVersion(fileDiff),
         collapsed: false,
       })),
     [files],

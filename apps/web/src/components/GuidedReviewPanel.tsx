@@ -49,6 +49,7 @@ export interface GuidedReviewFile {
   readonly fileDiff: FileDiffMetadata;
   readonly filePath: string;
   readonly fileKey: string;
+  readonly fileVersion: number;
   readonly collapsed: boolean;
 }
 
@@ -358,7 +359,6 @@ export function GuidedReviewBar({
               model.instanceId,
               model.model,
             )}
-            compact
             triggerVariant="ghost"
             triggerAriaLabel="Guided review model"
             onInstanceModelChange={(instanceId, nextModel) =>
@@ -390,7 +390,7 @@ export function GuidedReviewPanel({
   onRetry: () => void;
   renderDiff: RenderDiff;
   /** A caveat about what the guide covers, e.g. a partly loaded diff. */
-  notice?: string;
+  notice?: string | undefined;
 }) {
   const guide = state.status === "ready" ? state.guide : null;
   const chapters = useMemo(() => (guide ? resolveChapters(guide, files) : []), [guide, files]);
