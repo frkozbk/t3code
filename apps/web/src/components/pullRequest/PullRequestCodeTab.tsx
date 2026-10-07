@@ -24,7 +24,7 @@ import {
   TriangleAlertIcon,
   XIcon,
 } from "lucide-react";
-import { useAtomRefresh } from "@effect/atom-react";
+import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import * as Schema from "effect/Schema";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
@@ -56,8 +56,16 @@ import {
 import { pullRequestEnvironment } from "~/state/pullRequests";
 import { useEnvironmentQuery } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
+import { useGuidedReview } from "~/hooks/useGuidedReview";
+import { serverEnvironment } from "~/state/server";
 
 import { DiffPanelLoadingState } from "../DiffPanelShell";
+import {
+  GuidedReviewBar,
+  GuidedReviewButton,
+  GuidedReviewPanel,
+  type GuidedReviewFile,
+} from "../GuidedReviewPanel";
 import { DiffCommentAnnotation } from "../diffs/DiffCommentAnnotation";
 import { DiffFileTree } from "../diffs/DiffFileTree";
 import { useCodeViewFileReveal } from "../diffs/useCodeViewFileReveal";
@@ -417,6 +425,40 @@ function PullRequestCodeTab({
   const withheldContent =
     loadedSlices.some((slice) => slice.truncated) ||
     parsedSlices.some((parsed) => parsed?.kind === "raw");
+
+  // The guide covers what has loaded so far; loading another slice changes the patch, which
+  // drops a guide made for the shorter one.
+  const guidePatch = useMemo(
+    () =>
+      loadedSlices.length === 0 ? undefined : loadedSlices.map((slice) => slice.patch).join(""),
+    [loadedSlices],
+  );
+  const guideFiles = useMemo<GuidedReviewFile[]>(
+    () =>
+      files.map((fileDiff) => ({
+        fileDiff,
+        filePath: resolveFileDiffPath(fileDiff),
+        fileKey: buildFileDiffRenderKey(fileDiff),
+        collapsed: false,
+      })),
+    [files],
+  );
+  const guideReview = useGuidedReview({
+    environmentId,
+    cwd: useAtomValue(serverEnvironment.configValueAtom(environmentId))?.cwd,
+    patch: guidePatch,
+    fallbackModel: undefined,
+  });
+  const guideBar =
+    guideReview.state === null ? null : (
+      <GuidedReviewBar
+        environmentId={environmentId}
+        model={guideReview.model}
+        view={guideReview.view}
+        onViewChange={guideReview.setView}
+        onModelChange={guideReview.selectModel}
+      />
+    );
 
   // Placing a conversation takes more than its file being in the diff: its line has to fall
   // inside a hunk that was rendered. One that does not is drawn nowhere, so it belongs in the
@@ -1129,6 +1171,13 @@ function PullRequestCodeTab({
           deletions={lineStat.deletions}
           className="mr-1"
         />
+        {files.length > 0 ? (
+          <GuidedReviewButton
+            state={guideReview.state}
+            showGuide={guideReview.showGuide}
+            onClick={guideReview.toggle}
+          />
+        ) : null}
         {fileKeys.length > 0 ? (
           <Tooltip>
             <TooltipTrigger
@@ -1300,10 +1349,56 @@ function PullRequestCodeTab({
       </div>
     );
 
+  if (guideReview.showGuide && guideReview.state !== null) {
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        {toolbar}
+        {guideBar}
+        <GuidedReviewPanel
+          tab={guideReview.view === "guide" ? "guide" : "overview"}
+          state={guideReview.state}
+          files={guideFiles}
+          progress={guideReview.progress}
+          onProgressChange={guideReview.setProgress}
+          onRetry={guideReview.retry}
+          notice={
+            nextCursor === null
+              ? undefined
+              : "Covers the files loaded so far. Load the rest of the diff and make the guide again for the whole pull request."
+          }
+          renderDiff={(chapterFiles, key, viewerRef) => (
+            <StyledDiffCodeView
+              key={key}
+              viewerRef={viewerRef}
+              className="h-full overflow-auto [scrollbar-gutter:stable]"
+              items={chapterFiles.map((file) => ({
+                id: file.fileKey,
+                type: "diff" as const,
+                fileDiff: file.fileDiff,
+                collapsed: false,
+              }))}
+              options={{
+                diffStyle: diffLayout === "split" ? "split" : "unified",
+                lineDiffType: "none",
+                overflow: wordWrap ? "wrap" : "scroll",
+                theme: resolveDiffThemeName(resolvedTheme),
+                preferredHighlighter: PREFERRED_HIGHLIGHTER,
+                themeType: resolvedTheme,
+                stickyHeaders: true,
+                loadDiffFiles,
+              }}
+            />
+          )}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       {toolbar}
-      {/* Above the code, closed, and counted: these belong to the change rather than to any
+      {/* Above the code, closed, and counted
+      {guideBar}: these belong to the change rather than to any
             line of it, and in the stream they read as cards dropped into the patch. */}
       {orphanFiles.size > 0 ? (
         <Collapsible

@@ -1,7 +1,25 @@
 import type { FileDiffMetadata } from "@pierre/diffs";
-import type { ReviewGuide } from "@t3tools/contracts";
-import { ArrowRightIcon, ChevronLeftIcon, ChevronRightIcon, TriangleAlertIcon } from "lucide-react";
+import { useAtomValue } from "@effect/atom-react";
+import type { EnvironmentId, ModelSelection, ReviewGuide } from "@t3tools/contracts";
+import { createModelSelection } from "@t3tools/shared/model";
+import {
+  ArrowRightIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  SparklesIcon,
+  TriangleAlertIcon,
+} from "lucide-react";
 import { useMemo, useRef, type ReactNode, type RefObject } from "react";
+
+import { usePrimarySettings } from "../hooks/useSettings";
+import { getCustomModelOptionsByInstance } from "../modelSelection";
+import {
+  applyProviderInstanceSettings,
+  deriveProviderInstanceEntries,
+  sortProviderInstanceEntries,
+} from "../providerInstances";
+import { serverEnvironment } from "../state/server";
+import { ProviderModelPicker } from "./chat/ProviderModelPicker";
 
 import { getDiffLineStat } from "../lib/diffRendering";
 import { cn } from "../lib/utils";
@@ -18,6 +36,9 @@ export type GuidedReviewState =
   | { readonly status: "ready"; readonly guide: ReviewGuide };
 
 export type GuidedReviewTab = "overview" | "guide";
+
+/** `diff` is the host surface's own plain diff. */
+export type GuidedReviewView = GuidedReviewTab | "diff";
 
 export interface GuidedReviewProgress {
   readonly chapter: number;
@@ -252,6 +273,104 @@ function ChapterStep({
   );
 }
 
+/** Header button: generates a guide, then flips between the guide and the plain diff. */
+export function GuidedReviewButton({
+  state,
+  showGuide,
+  onClick,
+}: {
+  state: GuidedReviewState | null;
+  showGuide: boolean;
+  onClick: () => void;
+}) {
+  const label =
+    state === null ? "Make a guided review" : showGuide ? "Back to diff" : "Show guided review";
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            type="button"
+            size="icon-sm"
+            variant={showGuide ? "secondary" : "ghost"}
+            aria-label={label}
+            onClick={onClick}
+          />
+        }
+      >
+        <SparklesIcon className="size-3.5" />
+      </TooltipTrigger>
+      <TooltipPopup side="top">{label}</TooltipPopup>
+    </Tooltip>
+  );
+}
+
+/** Overview / Guide / Diff tabs plus the model that writes the guide. */
+export function GuidedReviewBar({
+  environmentId,
+  model,
+  view,
+  onViewChange,
+  onModelChange,
+}: {
+  environmentId: EnvironmentId | null;
+  model: ModelSelection | undefined;
+  view: GuidedReviewView;
+  onViewChange: (view: GuidedReviewView) => void;
+  onModelChange: (model: ModelSelection) => void;
+}) {
+  const settings = usePrimarySettings();
+  const providers = useAtomValue(serverEnvironment.configValueAtom(environmentId))?.providers;
+  const instanceEntries = useMemo(
+    () =>
+      sortProviderInstanceEntries(
+        applyProviderInstanceSettings(deriveProviderInstanceEntries(providers ?? []), settings),
+      ),
+    [providers, settings],
+  );
+  return (
+    <div className="flex shrink-0 gap-1 border-b border-border/70 px-3 py-1.5">
+      {(["overview", "guide", "diff"] as const).map((tab) => (
+        <button
+          key={tab}
+          type="button"
+          className={cn(
+            "rounded-md px-2.5 py-1 text-xs font-medium capitalize transition-colors",
+            view === tab
+              ? "bg-accent text-accent-foreground"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+          onClick={() => onViewChange(tab)}
+        >
+          {tab}
+        </button>
+      ))}
+      {model && (
+        <div className="ml-auto">
+          <ProviderModelPicker
+            activeInstanceId={model.instanceId}
+            model={model.model}
+            lockedProvider={null}
+            instanceEntries={instanceEntries}
+            modelOptionsByInstance={getCustomModelOptionsByInstance(
+              settings,
+              providers ?? [],
+              model.instanceId,
+              model.model,
+            )}
+            compact
+            triggerVariant="ghost"
+            triggerAriaLabel="Guided review model"
+            onInstanceModelChange={(instanceId, nextModel) =>
+              onModelChange(createModelSelection(instanceId, nextModel))
+            }
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Overview and chapter-by-chapter walkthrough of a diff, shown in place of the file list. */
 export function GuidedReviewPanel({
   tab,
@@ -261,6 +380,7 @@ export function GuidedReviewPanel({
   onProgressChange,
   onRetry,
   renderDiff,
+  notice,
 }: {
   tab: GuidedReviewTab;
   state: GuidedReviewState;
@@ -269,6 +389,8 @@ export function GuidedReviewPanel({
   onProgressChange: (progress: GuidedReviewProgress) => void;
   onRetry: () => void;
   renderDiff: RenderDiff;
+  /** A caveat about what the guide covers, e.g. a partly loaded diff. */
+  notice?: string;
 }) {
   const guide = state.status === "ready" ? state.guide : null;
   const chapters = useMemo(() => (guide ? resolveChapters(guide, files) : []), [guide, files]);
@@ -288,6 +410,11 @@ export function GuidedReviewPanel({
   }
   return (
     <div className="@container flex min-h-0 flex-1 flex-col">
+      {notice && (
+        <p className="shrink-0 border-b border-border/70 bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground">
+          {notice}
+        </p>
+      )}
       {tab === "overview" ? (
         <Overview guide={state.guide} />
       ) : (
