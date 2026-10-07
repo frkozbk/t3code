@@ -11,7 +11,7 @@ import {
 import type { EnvironmentId, JiraIssue } from "@t3tools/contracts";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import * as Option from "effect/Option";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 
 import { serverEnvironment } from "~/state/server";

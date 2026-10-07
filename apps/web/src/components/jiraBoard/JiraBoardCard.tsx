@@ -101,7 +101,7 @@ export function JiraBoardCard(props: {
           </div>
         }
       />
-      <PopoverPopup side="right" align="start" className="w-80" viewportClassName="p-2">
+      <PopoverPopup side="right" align="start" className="w-80" padding="compact">
         {open ? (
           <JiraBoardSkillMenu
             issue={issue}

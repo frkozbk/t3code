@@ -1,7 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 import { CheckCheck, ExternalLink, TicketIcon } from "lucide-react";
 import { memo, useState } from "react";
 
@@ -40,7 +40,7 @@ export const JiraIssuePicker = memo(function JiraIssuePicker(props: {
           </ComposerControl>
         }
       />
-      <PopoverPopup side="top" align="start" className="w-90" viewportClassName="p-2">
+      <PopoverPopup side="top" align="start" className="w-90" padding="compact">
         {open ? (
           <JiraIssueList
             environmentId={props.environmentId}

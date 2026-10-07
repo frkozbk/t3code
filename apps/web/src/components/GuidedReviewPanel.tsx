@@ -359,7 +359,6 @@ export function GuidedReviewBar({
               model.instanceId,
               model.model,
             )}
-            triggerVariant="ghost"
             triggerAriaLabel="Guided review model"
             onInstanceModelChange={(instanceId, nextModel) =>
               onModelChange(createModelSelection(instanceId, nextModel))
