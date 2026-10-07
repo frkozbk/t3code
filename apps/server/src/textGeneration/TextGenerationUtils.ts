@@ -23,6 +23,37 @@ export function limitSection(value: string, maxChars: number): string {
   return `${truncated}\n\n[truncated]`;
 }
 
+/**
+ * Fit a unified diff into `maxChars` without dropping files: each `diff --git` section is
+ * trimmed to its fair share of the budget (small files keep everything, so large ones get
+ * the leftover), so every file still shows up with at least its header.
+ */
+export function fitDiffToBudget(diff: string, maxChars: number): string {
+  if (diff.length <= maxChars) return diff;
+  const sections = diff.split(/^(?=diff --git )/m);
+  const bySize = sections
+    .map((_, index) => index)
+    .toSorted((a, b) => sections[a]!.length - sections[b]!.length);
+  const budgets = new Map<number, number>();
+  let remaining = maxChars;
+  bySize.forEach((index, rank) => {
+    const budget = Math.min(
+      sections[index]!.length,
+      Math.floor(remaining / (bySize.length - rank)),
+    );
+    budgets.set(index, budget);
+    remaining -= budget;
+  });
+  return sections
+    .map((section, index) => {
+      const budget = budgets.get(index)!;
+      if (section.length <= budget) return section;
+      const cut = section.lastIndexOf("\n", budget);
+      return `${section.slice(0, cut > 0 ? cut : budget)}\n[file diff truncated]\n`;
+    })
+    .join("");
+}
+
 /** Normalise a raw commit subject to imperative-mood, ≤72 chars, no trailing period. */
 export function sanitizeCommitSubject(raw: string): string {
   const singleLine = raw.trim().split(/\r?\n/g)[0]?.trim() ?? "";

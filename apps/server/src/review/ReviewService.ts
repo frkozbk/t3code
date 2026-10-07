@@ -13,9 +13,13 @@ import {
   type ReviewDiffPreviewError,
   type ReviewDiffPreviewInput,
   type ReviewDiffPreviewResult,
+  type ReviewGuide,
+  type ReviewGuideError,
+  type ReviewGuideInput,
 } from "@t3tools/contracts";
 
 import * as ServerConfig from "../config.ts";
+import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 
@@ -28,6 +32,9 @@ export class ReviewService extends Context.Service<
     readonly getDiffFileContents: (
       input: ReviewDiffFileContentsInput,
     ) => Effect.Effect<ReviewDiffFileContentsResult, ReviewDiffPreviewError>;
+    readonly generateGuide: (
+      input: ReviewGuideInput,
+    ) => Effect.Effect<ReviewGuide, ReviewGuideError>;
   }
 >()("t3/review/ReviewService") {}
 
@@ -38,6 +45,7 @@ export const make = Effect.gen(function* () {
   const path = yield* Path.Path;
   const vcsRegistry = yield* VcsDriverRegistry.VcsDriverRegistry;
   const git = yield* GitVcsDriver.GitVcsDriver;
+  const textGeneration = yield* TextGeneration.TextGeneration;
 
   const canonicalizePath = (value: string) => {
     const resolvedPath = path.resolve(value);
@@ -64,7 +72,10 @@ export const make = Effect.gen(function* () {
   };
 
   const assertWorkspaceBoundCwd = Effect.fn("ReviewService.assertWorkspaceBoundCwd")(function* (
-    operation: "ReviewService.getDiffPreview" | "ReviewService.getDiffFileContents",
+    operation:
+      | "ReviewService.getDiffPreview"
+      | "ReviewService.getDiffFileContents"
+      | "ReviewService.generateGuide",
     cwd: string,
   ) {
     const [candidate, workspaceRoot, worktreesRoot] = yield* Effect.all([
@@ -80,10 +91,7 @@ export const make = Effect.gen(function* () {
     return yield* new VcsRepositoryDetectionError({
       operation,
       cwd,
-      detail:
-        operation === "ReviewService.getDiffPreview"
-          ? "Review diff preview cwd must stay within the configured workspace root."
-          : "Review diff file contents cwd must stay within the configured workspace root.",
+      detail: "Review cwd must stay within the configured workspace root.",
     });
   });
 
@@ -133,9 +141,17 @@ export const make = Effect.gen(function* () {
     return yield* git.getReviewDiffFileContents(input);
   });
 
+  const generateGuide: ReviewService["Service"]["generateGuide"] = Effect.fn(
+    "ReviewService.generateGuide",
+  )(function* (input) {
+    yield* assertWorkspaceBoundCwd("ReviewService.generateGuide", input.cwd);
+    return yield* textGeneration.generateGuidedReview(input);
+  });
+
   return ReviewService.of({
     getDiffPreview,
     getDiffFileContents,
+    generateGuide,
   });
 });
 

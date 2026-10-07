@@ -16,6 +16,7 @@ import * as ServerConfig from "../config.ts";
 import { resolveAttachmentPath } from "../attachmentStore.ts";
 import {
   buildBranchNamePrompt,
+  buildGuidedReviewPrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
@@ -34,6 +35,7 @@ const OpenCodeTextGenerationOperation = Schema.Literals([
   "generatePrContent",
   "generateBranchName",
   "generateThreadTitle",
+  "generateGuidedReview",
 ]);
 
 type OpenCodeTextGenerationOperation = typeof OpenCodeTextGenerationOperation.Type;
@@ -451,10 +453,24 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
       };
     });
 
+  const generateGuidedReview: TextGeneration.TextGeneration["Service"]["generateGuidedReview"] =
+    Effect.fn("OpenCodeTextGeneration.generateGuidedReview")(function* (input) {
+      const { prompt, outputSchema } = buildGuidedReviewPrompt({ diff: input.diff });
+
+      return yield* runOpenCodeJson({
+        operation: "generateGuidedReview",
+        cwd: input.cwd,
+        prompt,
+        outputSchemaJson: outputSchema,
+        modelSelection: input.modelSelection,
+      });
+    });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateGuidedReview,
   } satisfies TextGeneration.TextGeneration["Service"];
 });

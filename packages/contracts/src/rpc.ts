@@ -83,6 +83,9 @@ import {
   ReviewDiffPreviewError,
   ReviewDiffPreviewInput,
   ReviewDiffPreviewResult,
+  ReviewGuide,
+  ReviewGuideError,
+  ReviewGuideInput,
 } from "./review.ts";
 import { JiraError, JiraIssue } from "./jira.ts";
 import { KeybindingsConfigError } from "./keybindings.ts";
@@ -314,6 +317,7 @@ export const WS_METHODS = {
 
   // Review methods
   reviewGetDiffPreview: "review.getDiffPreview",
+  reviewGenerateGuide: "review.generateGuide",
   reviewGetDiffFileContents: "review.getDiffFileContents",
 
   // Terminal methods
@@ -1046,6 +1050,12 @@ const WsReviewGetDiffFileContentsRpc = Rpc.make(WS_METHODS.reviewGetDiffFileCont
   error: Schema.Union([ReviewDiffPreviewError, EnvironmentAuthorizationError]),
 });
 
+const WsReviewGenerateGuideRpc = Rpc.make(WS_METHODS.reviewGenerateGuide, {
+  payload: ReviewGuideInput,
+  success: ReviewGuide,
+  error: Schema.Union([ReviewGuideError, EnvironmentAuthorizationError]),
+});
+
 const WsTerminalOpenRpc = Rpc.make(WS_METHODS.terminalOpen, {
   payload: TerminalOpenInput,
   success: TerminalSessionSnapshot,
@@ -1425,6 +1435,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsVcsInitRpc,
   WsReviewGetDiffPreviewRpc,
   WsReviewGetDiffFileContentsRpc,
+  WsReviewGenerateGuideRpc,
   WsTerminalOpenRpc,
   WsTerminalAttachRpc,
   WsTerminalWriteRpc,

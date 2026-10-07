@@ -18,6 +18,10 @@ export function createReviewEnvironmentAtoms<R, E>(
       tag: WS_METHODS.reviewGetDiffPreview,
       staleTimeMs: 5_000,
     }),
+    generateGuide: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:review:generate-guide",
+      tag: WS_METHODS.reviewGenerateGuide,
+    }),
     diffFileContents: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:review:diff-file-contents",
       tag: WS_METHODS.reviewGetDiffFileContents,

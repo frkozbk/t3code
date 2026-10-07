@@ -15,6 +15,7 @@ import { TextGenerationError } from "@t3tools/contracts";
 import * as TextGeneration from "./TextGeneration.ts";
 import {
   buildBranchNamePrompt,
+  buildGuidedReviewPrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
@@ -54,7 +55,8 @@ export const makeGrokTextGeneration = Effect.fn("makeGrokTextGeneration")(functi
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "generateGuidedReview";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -261,10 +263,24 @@ export const makeGrokTextGeneration = Effect.fn("makeGrokTextGeneration")(functi
       } satisfies TextGeneration.ThreadTitleGenerationResult;
     });
 
+  const generateGuidedReview: TextGeneration.TextGeneration["Service"]["generateGuidedReview"] =
+    Effect.fn("GrokTextGeneration.generateGuidedReview")(function* (input) {
+      const { prompt, outputSchema } = buildGuidedReviewPrompt({ diff: input.diff });
+
+      return yield* runGrokJson({
+        operation: "generateGuidedReview",
+        cwd: input.cwd,
+        prompt,
+        outputSchemaJson: outputSchema,
+        modelSelection: input.modelSelection,
+      });
+    });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateGuidedReview,
   } satisfies TextGeneration.TextGeneration["Service"];
 });
