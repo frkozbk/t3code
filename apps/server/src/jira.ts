@@ -15,7 +15,7 @@ import { JiraError, type JiraIssue } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import { HttpClient, HttpClientRequest } from "effect/http";
 
-import * as GitLabCli from "./sourceControl/GitLabCli.ts";
+import * as GitLabCli from "@t3tools/source-control-gitlab/server/GitLabCli";
 
 export const JIRA_TOKEN_SECRET_NAME = "jira-api-token";
 

@@ -21,20 +21,12 @@ import {
 import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown } from "lucide";
 import * as Schema from "effect/Schema";
 import * as DateTime from "effect/DateTime";
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ComponentProps,
-} from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useCodeViewFileReveal } from "./diffs/useCodeViewFileReveal";
 import { useFilesystemReadAccess } from "~/state/filesystem";
 import { useOpenInPreferredEditor } from "../editorPreferences";
 import { useFileContextMenuHandler } from "../fileContextMenu";
-import { type DraftId, useComposerThreadDraft } from "../composerDraftStore";
+import { type DraftId } from "../composerDraftStore";
 import { openDiffFilePrimaryAction } from "../diffFileActions";
 import { useCheckpointDiff } from "~/lib/checkpointDiffState";
 import { cn } from "~/lib/utils";
@@ -61,8 +53,6 @@ import { formatShortTimestamp } from "../timestampFormat";
 import { DiffFilePathCopyButton } from "./DiffFilePathCopyButton";
 import { DiffPanelLoadingState, DiffPanelShell, type DiffPanelMode } from "./DiffPanelShell";
 import { DiffStatLabel } from "./chat/DiffStatLabel";
-import { GuidedReviewBar, GuidedReviewButton, GuidedReviewPanel } from "./GuidedReviewPanel";
-import { useGuidedReview } from "../hooks/useGuidedReview";
 import { AnnotatableCodeView, type AnnotatableCodeViewHandle } from "./diffs/AnnotatableCodeView";
 import { DiffFileTree } from "./diffs/DiffFileTree";
 import { diffFileTreeEntries } from "./diffs/diffFileTree.logic";
@@ -258,7 +248,6 @@ export default function DiffPanel({
     serverConfig?.availableEditors ?? [],
   );
   const getDiffFileContents = useAtomCommand(reviewEnvironment.diffFileContents);
-  const composerModelState = useComposerThreadDraft(composerDraftTarget);
   const gitStatusQuery = useEnvironmentQuery(
     activeThread !== null && activeThread !== undefined && activeCwd != null
       ? vcsEnvironment.status({
@@ -350,7 +339,7 @@ export default function DiffPanel({
     },
     { enabled: isGitRepo && selectedTurn !== undefined },
   );
-  const primaryBranchDiffPreview = useEnvironmentQuery(
+  const branchDiffPreview = useEnvironmentQuery(
     canReadFiles && selectedRunId === null && activeThread && activeCwd
       ? reviewEnvironment.diffPreview({
           environmentId: activeThread.environmentId,
@@ -362,26 +351,6 @@ export default function DiffPanel({
         })
       : null,
   );
-  const shouldRetryBranchDiffAtEnvironmentCwd =
-    selectedRunId === null &&
-    primaryBranchDiffPreview.error?.includes("configured workspace root") === true &&
-    serverConfig?.cwd !== undefined &&
-    serverConfig.cwd !== activeCwd;
-  const fallbackBranchDiffPreview = useEnvironmentQuery(
-    canReadFiles && shouldRetryBranchDiffAtEnvironmentCwd && activeThread && serverConfig
-      ? reviewEnvironment.diffPreview({
-          environmentId: activeThread.environmentId,
-          input: {
-            cwd: serverConfig.cwd,
-            ...(selectedBaseRef ? { baseRef: selectedBaseRef } : {}),
-            ignoreWhitespace: diffIgnoreWhitespace,
-          },
-        })
-      : null,
-  );
-  const branchDiffPreview = shouldRetryBranchDiffAtEnvironmentCwd
-    ? fallbackBranchDiffPreview
-    : primaryBranchDiffPreview;
   const canRefreshGitDiff =
     isGitRepo && selectedRunId === null && activeThread != null && activeCwd != null;
   const activeThreadRefreshKey = routeThreadRef
@@ -482,16 +451,6 @@ export default function DiffPanel({
   const selectedPatchError = selectedTurn ? activeCheckpointDiff.error : branchDiffPreview.error;
   const hasResolvedPatch = typeof selectedPatch === "string";
   const hasNoNetChanges = hasResolvedPatch && selectedPatch.trim().length === 0;
-  const guideReview = useGuidedReview({
-    environmentId: activeThread?.environmentId ?? null,
-    // The cwd the diff was actually read from, including the environment-cwd fallback.
-    cwd: shouldRetryBranchDiffAtEnvironmentCwd ? serverConfig?.cwd : activeCwd,
-    patch: selectedPatch,
-    fallbackModel:
-      (composerModelState.activeProvider
-        ? composerModelState.modelSelectionByProvider[composerModelState.activeProvider]
-        : undefined) ?? activeThread?.modelSelection,
-  });
   const lazySource =
     !selectedTurn && selectedGitSource?.truncated && selectedGitSource.files
       ? selectedGitSource
@@ -716,6 +675,18 @@ export default function DiffPanel({
       return { scopeKey: collapseScopeKey, fileKeys: next };
     });
   }, []);
+  // Find can ask again before the unfolded file reaches the viewer, so this must never fold.
+  const unfoldDiffFile = useCallback((fileKey: string) => {
+    const { collapseScopeKey, defaultCollapsedDiffFileKeys } = collapseDefaultsRef.current;
+    setCollapsedDiffFiles((current) => {
+      const fileKeys =
+        current.scopeKey === collapseScopeKey ? current.fileKeys : defaultCollapsedDiffFileKeys;
+      if (!fileKeys.has(fileKey)) return current;
+      const next = new Set(fileKeys);
+      next.delete(fileKey);
+      return { scopeKey: collapseScopeKey, fileKeys: next };
+    });
+  }, []);
 
   const toggleDiffFileCollapse = useCallback(() => {
     setCodeViewRevision((current) => current + 1);
@@ -761,17 +732,6 @@ export default function DiffPanel({
       const turn = orderedTurnDiffSummaries.find((summary) => `turn:${summary.runId}` === value);
       if (turn) selectTurn(turn.runId);
     }
-  };
-
-  const codeViewOptions: ComponentProps<typeof AnnotatableCodeView>["options"] = {
-    diffStyle: diffLayout === "split" ? "split" : "unified",
-    lineDiffType: "none",
-    overflow: wordWrap ? "wrap" : "scroll",
-    theme: resolveDiffThemeName(resolvedTheme),
-    preferredHighlighter: PREFERRED_HIGHLIGHTER,
-    themeType: resolvedTheme as DiffThemeType,
-    stickyHeaders: true,
-    ...(currentLoadDiffFiles ? { loadDiffFiles } : {}),
   };
 
   const headerRow = (
@@ -952,13 +912,6 @@ export default function DiffPanel({
             layout="inline"
           />
         ) : null}
-        {hasResolvedPatch && !hasNoNetChanges && (
-          <GuidedReviewButton
-            state={guideReview.state}
-            showGuide={guideReview.showGuide}
-            onClick={guideReview.toggle}
-          />
-        )}
         {canRefreshGitDiff && (
           <Tooltip>
             <TooltipTrigger
@@ -1123,41 +1076,7 @@ export default function DiffPanel({
                 <p className="mb-2 text-2xs text-error/80">{selectedPatchError}</p>
               </div>
             )}
-            {guideReview.state !== null && (
-              <GuidedReviewBar
-                environmentId={activeThread?.environmentId ?? null}
-                model={guideReview.model}
-                view={guideReview.view}
-                onViewChange={guideReview.setView}
-                onModelChange={guideReview.selectModel}
-              />
-            )}
-            {guideReview.showGuide && guideReview.state !== null ? (
-              <GuidedReviewPanel
-                tab={guideReview.view === "guide" ? "guide" : "overview"}
-                state={guideReview.state}
-                files={codeViewFiles}
-                progress={guideReview.progress}
-                onProgressChange={guideReview.setProgress}
-                onRetry={guideReview.retry}
-                renderDiff={(files, key, viewerRef) => (
-                  <AnnotatableCodeView
-                    viewerRef={viewerRef}
-                    codeViewKey={key}
-                    className="h-full min-h-0 overflow-auto"
-                    files={files}
-                    sectionId={reviewSectionId}
-                    sectionTitle={reviewSectionTitle}
-                    composerDraftTarget={composerDraftTarget}
-                    renderHeaderFilenameSuffix={(fileDiff) => (
-                      <DiffFilePathCopyButton filePath={resolveFileDiffPath(fileDiff)} />
-                    )}
-                    renderHeaderPrefix={() => null}
-                    options={codeViewOptions}
-                  />
-                )}
-              />
-            ) : !renderablePatch && !lazySource ? (
+            {!renderablePatch && !lazySource ? (
               isLoadingSelectedPatch ? (
                 <DiffPanelLoadingState
                   label={
@@ -1270,6 +1189,7 @@ export default function DiffPanel({
                           },
                         }
                       : {})}
+                    onRevealSearchMatch={unfoldDiffFile}
                     renderHeaderPrefix={(fileDiff, fileKey) => {
                       const unavailable = fileDiff.cacheKey?.endsWith(":pending") === true;
                       return (
@@ -1283,7 +1203,16 @@ export default function DiffPanel({
                         />
                       );
                     }}
-                    options={codeViewOptions}
+                    options={{
+                      diffStyle: diffLayout === "split" ? "split" : "unified",
+                      lineDiffType: "none",
+                      overflow: wordWrap ? "wrap" : "scroll",
+                      theme: resolveDiffThemeName(resolvedTheme),
+                      preferredHighlighter: PREFERRED_HIGHLIGHTER,
+                      themeType: resolvedTheme as DiffThemeType,
+                      stickyHeaders: true,
+                      ...(currentLoadDiffFiles ? { loadDiffFiles } : {}),
+                    }}
                   />
                 </div>
                 {fileTreeOpen ? (
