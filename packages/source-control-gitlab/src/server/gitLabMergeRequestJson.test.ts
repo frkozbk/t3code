@@ -167,6 +167,14 @@ describe("decodeMergeRequestDetailJson", () => {
     ]);
   });
 
+  it("reads the head commit, which review guides pin to", () => {
+    const withSha = expectSuccess(decodeMergeRequestDetailJson(detailJson({ sha: "abc123" })));
+    const without = expectSuccess(decodeMergeRequestDetailJson(detailJson({})));
+
+    expect(withSha.headSha).toBe("abc123");
+    expect(without.headSha).toBeUndefined();
+  });
+
   it("reads an uncounted change set as its floor", () => {
     const detail = expectSuccess(
       decodeMergeRequestDetailJson(detailJson({ changes_count: "1000+" })),

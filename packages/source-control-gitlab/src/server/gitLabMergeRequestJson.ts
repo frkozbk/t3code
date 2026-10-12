@@ -51,6 +51,8 @@ const RawMergeRequestSchema = Schema.Struct({
   author: Schema.optional(Schema.NullOr(RawUserSchema)),
   source_branch: Schema.String,
   target_branch: Schema.String,
+  /** The head commit of the source branch, which review guides pin themselves to. */
+  sha: Schema.optional(Schema.NullOr(Schema.String)),
   state: Schema.optional(Schema.NullOr(Schema.String)),
   draft: Schema.optional(Schema.Boolean),
   work_in_progress: Schema.optional(Schema.Boolean),
@@ -221,6 +223,7 @@ export interface GitLabMergeRequestListItem {
 }
 
 export interface GitLabMergeRequestDetail extends GitLabMergeRequestListItem {
+  readonly headSha?: string;
   readonly body: string;
   readonly changedFiles: number;
   readonly mergedAt: string | null;
@@ -369,8 +372,10 @@ function toDetail(raw: Schema.Schema.Type<typeof RawMergeRequestSchema>): GitLab
     raw.merge_when_pipeline_succeeds == null && raw.auto_merge_enabled == null
       ? undefined
       : raw.merge_when_pipeline_succeeds === true || raw.auto_merge_enabled === true;
+  const headSha = trimmed(raw.sha);
   return {
     ...listItem,
+    ...(headSha === null ? {} : { headSha }),
     body: raw.description ?? "",
     changedFiles: toChangedFiles(raw.changes_count),
     mergedAt: trimmed(raw.merged_at),
