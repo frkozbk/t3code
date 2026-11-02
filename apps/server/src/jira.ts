@@ -138,8 +138,9 @@ export const enrichWithPrApprovals = Effect.fn("Jira.enrichWithPrApprovals")(fun
   if (codeReview.length === 0) return issues;
 
   const gitlab = yield* GitLabCli.GitLabCli;
-  const counts = yield* Effect.all(
-    codeReview.map((issue) => fetchMrApprovalCount(gitlab, cwd, issue.key)),
+  const counts = yield* Effect.forEach(
+    codeReview,
+    (issue) => fetchMrApprovalCount(gitlab, cwd, issue.key),
     { concurrency: 5 },
   );
 

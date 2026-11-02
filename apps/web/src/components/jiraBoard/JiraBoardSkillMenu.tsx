@@ -5,7 +5,8 @@ import { useMemo, useState } from "react";
 import { cn } from "~/lib/utils";
 import { markPendingAutoSend, useComposerDraftStore } from "../../composerDraftStore";
 import { useHandleNewThread } from "../../hooks/useHandleNewThread";
-import { useProjects, useServerConfigs } from "../../state/entities";
+import { useProjects } from "../../state/entities";
+import { useEnvironmentProviders } from "../../state/environments";
 import { toastManager } from "../ui/toast";
 import type { JiraBoardIssue } from "./JiraBoardCard";
 import { useFavoriteSkillsStore } from "./favoriteSkillsStore";
@@ -30,14 +31,14 @@ export function JiraBoardSkillMenu(props: {
   const [selectedCommand, setSelectedCommand] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const { defaultProjectRef, handleNewThread } = useHandleNewThread();
-  const serverConfigs = useServerConfigs();
+  const providersByEnvironment = useEnvironmentProviders();
   const projects = useProjects();
   const favoriteKeys = useFavoriteSkillsStore((state) => state.favoriteKeys);
   const toggleFavorite = useFavoriteSkillsStore((state) => state.toggleFavorite);
 
   const commands = useMemo<ReadonlyArray<RunnableCommand>>(() => {
     if (!defaultProjectRef) return [];
-    const providers = serverConfigs.get(defaultProjectRef.environmentId)?.providers ?? [];
+    const providers = providersByEnvironment.get(defaultProjectRef.environmentId) ?? [];
     const seen = new Set<string>();
     const options: RunnableCommand[] = [];
     for (const provider of providers) {
@@ -65,7 +66,7 @@ export function JiraBoardSkillMenu(props: {
     return [...options].sort(
       (a, b) => Number(favoriteKeys.includes(b.key)) - Number(favoriteKeys.includes(a.key)),
     );
-  }, [defaultProjectRef, serverConfigs, favoriteKeys]);
+  }, [defaultProjectRef, providersByEnvironment, favoriteKeys]);
 
   const filtered = useMemo(() => {
     const query = filter.trim().toLowerCase();
