@@ -10,15 +10,17 @@ describe("hasWideMarkdownBlock", () => {
     expect(hasWideMarkdownBlock("an em dash — and a rule\n\n---\n")).toBe(false);
   });
 
-  it("detects fenced code blocks", () => {
-    expect(hasWideMarkdownBlock("before\n```\ncode\n```\nafter")).toBe(true);
-    expect(hasWideMarkdownBlock("before\n```ts\ncode\n```")).toBe(true);
-    expect(hasWideMarkdownBlock("before\n~~~\ncode\n~~~")).toBe(true);
-    expect(hasWideMarkdownBlock("   ```\ncode\n```")).toBe(true);
-  });
-
-  it("detects GFM tables", () => {
-    expect(hasWideMarkdownBlock("| a | b |\n| --- | --- |\n| 1 | 2 |")).toBe(true);
-    expect(hasWideMarkdownBlock("a | b\n:-- | --:\n1 | 2")).toBe(true);
+  it("detects indented code blocks", () => {
+    const prompt = 'before\n\n    def search(x):\n        return x\n\n"""\n\nafter';
+    expect(hasWideMarkdownBlock(prompt)).toBe(true);
+    expect(hasWideMarkdownBlock("before\n\n\treturn x\n\nafter")).toBe(true);
+    expect(hasWideMarkdownBlock("before\n\n \treturn x\n\nafter")).toBe(true);
+    expect(hasWideMarkdownBlock(">     return x")).toBe(true);
+    expect(hasWideMarkdownBlock("> >  \treturn x")).toBe(true);
+    expect(hasWideMarkdownBlock("    1. indented code")).toBe(true);
+    expect(hasWideMarkdownBlock("    - code-like bullet")).toBe(true);
+    expect(hasWideMarkdownBlock("before\n   not code\nafter")).toBe(false);
+    expect(hasWideMarkdownBlock("before\n    \nafter")).toBe(false);
+    expect(hasWideMarkdownBlock("before\n \t\nafter")).toBe(false);
   });
 });

@@ -6,14 +6,16 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
     />
-    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="theme-color" content="#000000" />
     <link rel="icon" href="/favicon.ico" sizes="48x48" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <script>
       (() => {
         const LIGHT_BACKGROUND = "#ffffff";
-        const DARK_BACKGROUND = "#0a0a0a";
+        const DARK_BACKGROUND = "#000000";
         const CUSTOM_THEMES_STORAGE_KEY = "t3code:themes:v1";
+        const ENVIRONMENT_THEMES_STORAGE_KEY = "t3code:environment-themes:v1";
         const THEME_FOLLOW_SYSTEM_STORAGE_KEY = "t3code:theme-follow-system";
         const THEME_APPEARANCE_MODE_STORAGE_KEY = "t3code:theme-appearance-mode";
         const THEME_HALVES_STORAGE_KEY = "t3code:theme-halves:v1";
@@ -24,7 +26,7 @@
             accent: "#4f46e5",
           },
           dark: {
-            background: "#0a0a0a",
+            background: "#000000",
             foreground: "#f5f5f5",
             accent: "#818cf8",
           },
@@ -35,16 +37,16 @@
         // app colors before React mounts.
         const DEFAULT_THEME_PALETTES = {
           light: {
-            background: "#fdf7fd",
-            foreground: "#501854",
-            accent: "#db2777",
-            chrome: "#fdf7fd",
+            background: "oklch(0.982446 0.010114 325.653)",
+            foreground: "oklch(0.325698 0.116116 325.037)",
+            accent: "oklch(0.591646 0.217985 0.584)",
+            chrome: "oklch(0.982446 0.010114 325.653)",
           },
           dark: {
-            background: "#1f1a24",
-            foreground: "#f9f8fb",
-            accent: "#a3004c",
-            chrome: "#1f1a24",
+            background: "oklch(0.22813 0.020366 307.469)",
+            foreground: "oklch(0.980735 0.004092 301.426)",
+            accent: "oklch(0.460685 0.185347 4.099)",
+            chrome: "oklch(0.22813 0.020366 307.469)",
           },
         };
         // Keep this small boot-time copy in sync with the built-in palettes so
@@ -52,77 +54,75 @@
         const BUILT_IN_THEME_PALETTES = {
           "t3-chat": {
             light: {
-              background: "#fdf7fd",
-              foreground: "#501854",
-              accent: "#db2777",
-              chrome: "#fdf7fd",
+              background: "oklch(0.982446 0.010114 325.653)",
+              foreground: "oklch(0.325698 0.116116 325.037)",
+              accent: "oklch(0.591646 0.217985 0.584)",
+              chrome: "oklch(0.982446 0.010114 325.653)",
             },
             dark: {
-              background: "#1f1a24",
-              foreground: "#f9f8fb",
-              accent: "#a3004c",
-              chrome: "#1f1a24",
+              background: "oklch(0.22813 0.020366 307.469)",
+              foreground: "oklch(0.980735 0.004092 301.426)",
+              accent: "oklch(0.460685 0.185347 4.099)",
+              chrome: "oklch(0.22813 0.020366 307.469)",
             },
           },
           grove: {
             light: {
-              background: "#f3f7f4",
-              foreground: "#241523",
-              accent: "#1b7d50",
-              chrome: "#f3f7f4",
+              background: "oklch(0.972369 0.005497 157.15)",
+              foreground: "oklch(0.222003 0.03479 328.979)",
+              accent: "oklch(0.523295 0.112292 158.089)",
+              chrome: "oklch(0.972369 0.005497 157.15)",
             },
             dark: {
-              background: "#1b2821",
-              foreground: "#fffaff",
-              accent: "#69d69a",
-              chrome: "#1b2821",
+              background: "oklch(0.260865 0.02152 162.75)",
+              foreground: "oklch(0.990339 0.008411 325.64)",
+              accent: "oklch(0.796228 0.133058 157.319)",
+              chrome: "oklch(0.260865 0.02152 162.75)",
             },
           },
           ocean: {
             light: {
-              background: "#f5f7f8",
-              foreground: "#241523",
-              accent: "#2672af",
-              chrome: "#f5f7f8",
+              background: "oklch(0.974199 0.002856 241.597)",
+              foreground: "oklch(0.222003 0.03479 328.979)",
+              accent: "oklch(0.536684 0.120219 247.01)",
+              chrome: "oklch(0.974199 0.002856 241.597)",
             },
             dark: {
-              background: "#17212b",
-              foreground: "#fffaff",
-              accent: "#70b9ee",
-              chrome: "#17212b",
+              background: "oklch(0.242641 0.024125 250.573)",
+              foreground: "oklch(0.990339 0.008411 325.64)",
+              accent: "oklch(0.758933 0.105833 241.548)",
+              chrome: "oklch(0.242641 0.024125 250.573)",
             },
           },
           ember: {
             light: {
-              background: "#f9f7f5",
-              foreground: "#241523",
-              accent: "#ae552a",
-              chrome: "#f9f7f5",
+              background: "oklch(0.976527 0.002685 60.725)",
+              foreground: "oklch(0.222003 0.03479 328.979)",
+              accent: "oklch(0.552831 0.129438 44.656)",
+              chrome: "oklch(0.976527 0.002685 60.725)",
             },
             dark: {
-              background: "#291e1a",
-              foreground: "#fffaff",
-              accent: "#f09a64",
-              chrome: "#291e1a",
+              background: "oklch(0.245899 0.019144 42.044)",
+              foreground: "oklch(0.990339 0.008411 325.64)",
+              accent: "oklch(0.762174 0.124117 52.082)",
+              chrome: "oklch(0.245899 0.019144 42.044)",
             },
           },
           iris: {
             light: {
-              background: "#f8f7f9",
-              foreground: "#241523",
-              accent: "#7253b9",
-              chrome: "#f8f7f9",
+              background: "oklch(0.976531 0.003855 303.226)",
+              foreground: "oklch(0.222003 0.03479 328.979)",
+              accent: "oklch(0.525348 0.15373 294.176)",
+              chrome: "oklch(0.976531 0.003855 303.226)",
             },
             dark: {
-              background: "#1d1929",
-              foreground: "#fffaff",
-              accent: "#9d7df2",
-              chrome: "#1d1929",
+              background: "oklch(0.225975 0.031062 293.741)",
+              foreground: "oklch(0.990339 0.008411 325.64)",
+              accent: "oklch(0.671712 0.169136 293.929)",
+              chrome: "oklch(0.225975 0.031062 293.741)",
             },
           },
         };
-        // Keep the built-in mode list in sync with the runtime so the selected
-        // T3 Chat palette is visible before React has mounted.
         const BUILT_IN_THEME_MODES = Object.fromEntries(
           Object.entries(BUILT_IN_THEME_PALETTES).map(([id, palettes]) => [
             id,
@@ -144,17 +144,32 @@
           "t3-ember",
           "t3-iris",
         ];
-        // Update every theme-color meta so any element another layer added
-        // carries the resolved color too.
         const setThemeColor = (color) => {
           for (const meta of document.querySelectorAll('meta[name="theme-color"]')) {
             meta.setAttribute("content", color);
           }
         };
 
-        const isHexColor = (value) =>
-          typeof value === "string" &&
-          /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value);
+        // The runtime decodes the same literal CSS formats into OKLCH. Keep
+        // contextual colors out: they cannot be resolved from stored data.
+        const SYSTEM_COLOR_KEYWORD =
+          /^(?:accentcolor(?:text)?|active(?:border|caption|text)|appworkspace|background|button(?:border|face|highlight|shadow|text)|canvas(?:text)?|captiontext|field(?:text)?|graytext|highlight(?:text)?|inactive(?:border|caption(?:text)?)|info(?:background|text)|linktext|mark(?:text)?|menu(?:text)?|scrollbar|selecteditem(?:text)?|threed(?:darkshadow|face|highlight|lightshadow|shadow)|visitedtext|window(?:frame|text)?)$/i;
+        const isThemeColor = (value) => {
+          if (typeof value !== "string" || typeof CSS === "undefined") return false;
+          const color = value.trim();
+          if (
+            /^(?:currentcolor|inherit|initial|revert|revert-layer|unset)$/i.test(color) ||
+            SYSTEM_COLOR_KEYWORD.test(color) ||
+            /\bfrom\b|(?:var|env|attr|calc|min|max|clamp)\(/i.test(color)
+          ) {
+            return false;
+          }
+          const isLiteralColor =
+            /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(color) ||
+            /^[a-z]+$/i.test(color) ||
+            /^(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(/i.test(color);
+          return isLiteralColor && CSS.supports("color", color);
+        };
         const isRecord = (value) =>
           typeof value === "object" && value !== null && !Array.isArray(value);
         const isThemeId = (value) =>
@@ -183,12 +198,9 @@
               (appearance === value.appearance || isRecord(colors)),
           );
         };
-        const findCustomTheme = (themeId) => {
-          if (RESERVED_THEME_IDS.includes(themeId)) return null;
+        const findStoredTheme = (storageKey, themeId) => {
           try {
-            const parsed = JSON.parse(
-              window.localStorage.getItem(CUSTOM_THEMES_STORAGE_KEY) ?? "null",
-            );
+            const parsed = JSON.parse(window.localStorage.getItem(storageKey) ?? "null");
             if (!Array.isArray(parsed)) return null;
             return (
               parsed.find((value) => isStoredCustomTheme(value) && value.id === themeId) ?? null
@@ -197,13 +209,18 @@
             return null;
           }
         };
+        // Same precedence as getThemeDefinition: saved custom themes, then published ones.
+        const findCustomTheme = (themeId) => {
+          if (RESERVED_THEME_IDS.includes(themeId)) return null;
+          return (
+            findStoredTheme(CUSTOM_THEMES_STORAGE_KEY, themeId) ??
+            findStoredTheme(ENVIRONMENT_THEMES_STORAGE_KEY, themeId)
+          );
+        };
 
         try {
           const storedTheme = window.localStorage.getItem("t3code:theme");
           const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-          // Older builds stored the dark T3 Chat palette as its own theme id
-          // and every maintainer theme under a t3- prefix; keep those
-          // preferences readable. Mirrors the runtime's legacy alias table.
           const LEGACY_THEME_IDS = {
             "t3-chat-dark": "t3-chat",
             "t3-grove": "grove",
@@ -224,7 +241,6 @@
                   (mode) => mode === customTheme.appearance || customTheme.variants?.[mode],
                 )
               : null);
-          // Mirrors the runtime's isKnownThemePreference.
           const isKnownTheme =
             storedTheme === "light" ||
             storedTheme === "dark" ||
@@ -238,8 +254,6 @@
             THEME_APPEARANCE_MODE_STORAGE_KEY,
           );
           const storedFollowSystem = window.localStorage.getItem(THEME_FOLLOW_SYSTEM_STORAGE_KEY);
-          // Mirrors the runtime's getThemePreferenceMode fallback: a bare
-          // "light"/"dark" preference names its own mode.
           const preferenceMode =
             theme === "light" || theme === "dark" ? theme : (legacyMode ?? baseAppearance);
           const appearanceMode = isThemePreferenceMode(storedAppearanceMode)
@@ -278,9 +292,7 @@
                 halfCustomTheme = halfCustom;
               }
             }
-          } catch {
-            // A malformed mix degrades to the base preference.
-          }
+          } catch {}
           const themeMode = !isThemed
             ? null
             : appearanceMode === "system"
@@ -322,13 +334,13 @@
           const fallbackSplash = isDark ? SPLASH_COLORS.dark : SPLASH_COLORS.light;
           const customSplash = customColors
             ? {
-                background: isHexColor(customColors.canvas)
+                background: isThemeColor(customColors.canvas)
                   ? customColors.canvas
                   : (customDefaults?.background ?? fallbackSplash.background),
-                foreground: isHexColor(customColors.text)
+                foreground: isThemeColor(customColors.text)
                   ? customColors.text
                   : (customDefaults?.foreground ?? fallbackSplash.foreground),
-                accent: isHexColor(customColors.accent)
+                accent: isThemeColor(customColors.accent)
                   ? customColors.accent
                   : (customDefaults?.accent ?? fallbackSplash.accent),
               }
@@ -350,7 +362,7 @@
           }
           document.documentElement.classList.toggle("dark", isDark);
           const chromeColor = customColors
-            ? isHexColor(customColors.chrome)
+            ? isThemeColor(customColors.chrome)
               ? customColors.chrome
               : (customDefaults?.chrome ?? fallbackSplash.background)
             : builtInSplash
@@ -367,13 +379,10 @@
           }
           setThemeColor(chromeColor);
         } catch {
-          // Mirror the runtime's storage-failure fallback: follow the OS.
           let prefersDark = true;
           try {
             prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-          } catch {
-            // Keep the dark default when even matchMedia is unavailable.
-          }
+          } catch {}
           delete document.documentElement.dataset.themeId;
           delete document.documentElement.dataset.themeSelected;
           document.documentElement.classList.toggle("dark", prefersDark);
@@ -395,11 +404,12 @@
       body {
         background: #ffffff;
         color: #262626;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Inter Variable", "Segoe UI", system-ui, sans-serif;
       }
 
       html.dark body {
-        background: #0a0a0a;
+        background: #000000;
         color: #f5f5f5;
       }
 
@@ -434,17 +444,282 @@
         height: 64px;
         object-fit: contain;
       }
+
+      #boot-shell-progress {
+        position: absolute;
+        top: 100%;
+        width: min(360px, 80vw);
+        text-align: center;
+        font: 13px system-ui;
+        opacity: 0.7;
+      }
+
+      /* App CSS locks body and #root scrolling once main loads, so the error screen scrolls itself. */
+      #boot-shell:has(> #boot-error) {
+        height: 100%;
+        overflow-x: hidden;
+        overflow-y: auto;
+      }
+
+      #boot-error {
+        --boot-error-fg: #262626;
+        --boot-error-bg: #ffffff;
+        --boot-error-line: color-mix(in srgb, currentColor 12%, transparent);
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        align-self: flex-start;
+        width: min(400px, calc(100% - 48px));
+        padding: clamp(24px, 22vh, 220px) 0 24px;
+        font-size: 13px;
+        line-height: 20px;
+      }
+
+      html.dark #boot-error {
+        --boot-error-fg: #f5f5f5;
+        --boot-error-bg: #000000;
+      }
+
+      html[data-theme-selected="true"] #boot-error {
+        --boot-error-fg: var(--boot-foreground);
+        --boot-error-bg: var(--boot-background);
+      }
+
+      #boot-error h1 {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 600;
+        line-height: 22px;
+      }
+
+      #boot-error p {
+        margin: 4px 0 0;
+        opacity: 0.7;
+        overflow-wrap: anywhere;
+        text-wrap: pretty;
+      }
+
+      #boot-error code,
+      #boot-error pre {
+        font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        font-size: 12px;
+        overflow-wrap: anywhere;
+      }
+
+      #boot-error a {
+        color: inherit;
+        text-decoration-line: underline;
+        text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+        text-underline-offset: 3px;
+      }
+
+      #boot-error a:hover {
+        text-decoration-color: currentColor;
+      }
+
+      #boot-error button {
+        height: 32px;
+        padding: 0 14px;
+        border: 1px solid var(--boot-error-line);
+        border-radius: 6px;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        font-weight: 500;
+        cursor: pointer;
+      }
+
+      #boot-error button[aria-disabled="true"] {
+        opacity: 0.6;
+        cursor: default;
+      }
+
+      #boot-error :is(button, a, summary, pre):focus-visible {
+        outline: 2px solid var(--boot-error-fg);
+        outline-offset: 2px;
+      }
+
+      #boot-error-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 16px;
+      }
+
+      #boot-error #boot-error-reload {
+        border-color: var(--boot-error-fg);
+        background: var(--boot-error-fg);
+        color: var(--boot-error-bg);
+      }
+
+      #boot-error-reload:hover {
+        opacity: 0.9;
+      }
+
+      #boot-error #boot-error-update-note {
+        margin-top: 8px;
+        font-size: 12px;
+        line-height: 18px;
+      }
+
+      #boot-error details {
+        width: 100%;
+        margin-top: 32px;
+      }
+
+      #boot-error summary {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border-radius: 4px;
+        list-style: none;
+        opacity: 0.7;
+        cursor: pointer;
+      }
+
+      #boot-error summary::-webkit-details-marker {
+        display: none;
+      }
+
+      #boot-error summary::before {
+        content: "";
+        width: 5px;
+        height: 5px;
+        border-right: 1.5px solid currentColor;
+        border-bottom: 1.5px solid currentColor;
+        transform: rotate(-45deg);
+      }
+
+      #boot-error details[open] summary::before {
+        transform: rotate(45deg);
+      }
+
+      #boot-error summary:hover,
+      #boot-error details[open] summary {
+        opacity: 1;
+      }
+
+      #boot-error details > :not(summary) {
+        display: grid;
+        gap: 8px;
+        margin-top: 20px;
+      }
+
+      #boot-error details > a {
+        display: block;
+        width: fit-content;
+      }
+
+      #boot-error details p {
+        margin: 0;
+        font-size: 12px;
+        line-height: 18px;
+      }
+
+      #boot-error-command {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 4px 4px 10px;
+        border: 1px solid var(--boot-error-line);
+        border-radius: 6px;
+      }
+
+      #boot-error-command code {
+        flex: 1;
+        min-width: 0;
+        opacity: 0.8;
+      }
+
+      #boot-error .boot-error-icon {
+        display: grid;
+        flex: none;
+        place-items: center;
+        min-width: 24px;
+        height: 24px;
+        padding: 0 4px;
+        border: 0;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 400;
+        opacity: 0.7;
+      }
+
+      #boot-error .boot-error-icon:hover {
+        opacity: 1;
+        background: color-mix(in srgb, currentColor 8%, transparent);
+      }
+
+      #boot-error-details {
+        max-height: 200px;
+        margin: 0;
+        padding: 10px 12px;
+        overflow: auto;
+        border: 1px solid var(--boot-error-line);
+        border-radius: 6px;
+        font-size: 11px;
+        line-height: 16px;
+        white-space: pre-wrap;
+        opacity: 0.8;
+      }
+
+      #boot-error-report {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+
+      #boot-error-report button {
+        height: 28px;
+        padding: 0 10px;
+      }
+
+      .boot-error-sr {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+      }
     </style>
-    <title>T3 Code (Alpha)</title>
+    <script>
+      // Desktop's preload injects branding before page scripts. Titling before the <title> below
+      // parses keeps Electron from reporting the web build's channel to the window first.
+      const desktopDisplayName = window.desktopBridge?.getAppBranding?.()?.displayName;
+      if (desktopDisplayName) document.title = desktopDisplayName;
+    </script>
+    <!-- vite.config.ts stamps the web build's channel into this title. -->
+    <title>T3 Code</title>
   </head>
   <body>
     <div id="root">
       <div id="boot-shell">
         <div id="boot-shell-card" aria-label="T3 Code splash screen">
           <img id="boot-shell-logo" src="/apple-touch-icon.png" alt="T3 Code" />
+          <p id="boot-shell-progress" role="status" aria-live="polite"></p>
         </div>
       </div>
     </div>
-    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      const migrationLabel = document.getElementById("boot-shell-progress");
+      const readMigrationProgress = window.desktopBridge?.getDatabaseMigrationProgress;
+      if (readMigrationProgress && migrationLabel) {
+        const updateMigrationProgress = async () => {
+          if (!migrationLabel.isConnected) return;
+          try {
+            const progress = await readMigrationProgress();
+            migrationLabel.textContent = progress
+              ? `Upgrading database (${progress.current} of ${progress.total})`
+              : "";
+          } catch {
+            migrationLabel.textContent = "";
+          }
+          if (migrationLabel.isConnected) setTimeout(updateMigrationProgress, 1000);
+        };
+        void updateMigrationProgress();
+      }
+    </script>
+    <script type="module" src="/src/bootstrap.ts"></script>
   </body>
 </html>

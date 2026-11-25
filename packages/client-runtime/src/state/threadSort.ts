@@ -1,12 +1,19 @@
 import type { ProjectId } from "@t3tools/contracts";
 import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "@t3tools/contracts/settings";
-import * as Arr from "effect/Array";
-import * as Order from "effect/Order";
+import {
+  generateSpreadPinOrderKeys,
+  LEADING_ORDER_TIER,
+  pinOrderKeyBetween,
+} from "@t3tools/shared/pinOrderKey";
+import type { EnvironmentThreadShell } from "./models.ts";
+
+export { generateSpreadPinOrderKeys, pinOrderKeyBetween } from "@t3tools/shared/pinOrderKey";
 
 export interface ThreadSortInput {
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly latestUserMessageAt?: string | null;
+  readonly latestUserAuthoredMessageAt?: string | null;
   readonly messages?: ReadonlyArray<{
     readonly createdAt: string;
     readonly role: string;
@@ -17,6 +24,56 @@ export function toSortableTimestamp(iso: string | undefined): number | null {
   if (!iso) return null;
   const ms = Date.parse(iso);
   return Number.isFinite(ms) ? ms : null;
+}
+
+export type SettledThreadTimestampInput = Pick<
+  EnvironmentThreadShell,
+  "settledAt" | "latestUserMessageAt" | "latestRun" | "updatedAt"
+>;
+
+export function resolveSettledThreadTimestamp(thread: SettledThreadTimestampInput): string | null {
+  if (thread.settledAt != null && toSortableTimestamp(thread.settledAt) !== null) {
+    return thread.settledAt;
+  }
+  return resolveThreadActivityTimestamp(thread);
+}
+
+export function resolveThreadActivityTimestamp(
+  thread: Pick<EnvironmentThreadShell, "latestUserMessageAt" | "latestRun" | "updatedAt">,
+): string | null {
+  let latest: string | null = null;
+  let latestMs = Number.NEGATIVE_INFINITY;
+  for (const candidate of [
+    thread.latestUserMessageAt,
+    thread.latestRun?.requestedAt,
+    thread.latestRun?.startedAt,
+    thread.latestRun?.completedAt,
+  ]) {
+    const parsed = toSortableTimestamp(candidate ?? undefined);
+    if (candidate != null && parsed !== null && parsed > latestMs) {
+      latest = candidate;
+      latestMs = parsed;
+    }
+  }
+  if (latest !== null) return latest;
+  return toSortableTimestamp(thread.updatedAt) === null ? null : thread.updatedAt;
+}
+
+export function sortSettledThreads<T extends SettledThreadTimestampInput & { readonly id: string }>(
+  threads: readonly T[],
+): T[] {
+  return threads
+    .map((thread) => {
+      const timestamp = resolveSettledThreadTimestamp(thread);
+      return { thread, timestampMs: timestamp === null ? 0 : Date.parse(timestamp) };
+    })
+    .sort(
+      (left, right) =>
+        right.timestampMs - left.timestampMs ||
+        // Plain order, as the server pages ties (ids mix upper and lower case).
+        (left.thread.id < right.thread.id ? -1 : left.thread.id > right.thread.id ? 1 : 0),
+    )
+    .map(({ thread }) => thread);
 }
 
 function getFirstSortableTimestamp(...values: Array<string | null | undefined>): number | null {
@@ -31,6 +88,18 @@ function getFirstSortableTimestamp(...values: Array<string | null | undefined>):
 }
 
 function getLatestUserMessageTimestamp(thread: ThreadSortInput): number {
+  // Agents also post in the user role; only what the user wrote counts. A thread
+  // the user never wrote in counts from its creation; older servers omit the field.
+  if (thread.latestUserAuthoredMessageAt !== undefined) {
+    return (
+      getFirstSortableTimestamp(
+        thread.latestUserAuthoredMessageAt,
+        thread.createdAt,
+        thread.updatedAt,
+      ) ?? Number.NEGATIVE_INFINITY
+    );
+  }
+
   if (thread.latestUserMessageAt) {
     const latestUserMessageTimestamp = toSortableTimestamp(thread.latestUserMessageAt);
     if (latestUserMessageTimestamp !== null) {
@@ -69,23 +138,29 @@ export function getThreadSortTimestamp(
   return getLatestUserMessageTimestamp(thread);
 }
 
+function activeThreadAnchorTimestampMs(thread: {
+  readonly createdAt: string;
+  readonly unsettledAt?: string | null | undefined;
+}): number {
+  return Math.max(
+    toSortableTimestamp(thread.createdAt) ?? 0,
+    toSortableTimestamp(thread.unsettledAt ?? undefined) ?? 0,
+  );
+}
+
 export function sortThreads<T extends { readonly id: string } & ThreadSortInput>(
   threads: readonly T[],
   sortOrder: SidebarThreadSortOrder,
 ): T[] {
-  return Arr.sort(
-    threads,
-    Order.mapInput(
-      Order.Struct({
-        timestamp: Order.flip(Order.Number),
-        id: Order.flip(Order.String),
-      }),
-      (thread: T) => ({
-        timestamp: getThreadSortTimestamp(thread, sortOrder),
-        id: thread.id,
-      }),
-    ),
-  );
+  if (threads.length < 2) return [...threads];
+  return threads
+    .map((thread) => ({ thread, timestamp: getThreadSortTimestamp(thread, sortOrder) }))
+    .sort(
+      (left, right) =>
+        right.timestamp - left.timestamp ||
+        (left.thread.id < right.thread.id ? 1 : left.thread.id > right.thread.id ? -1 : 0),
+    )
+    .map(({ thread }) => thread);
 }
 
 export function getLatestThreadForProject<
@@ -95,105 +170,34 @@ export function getLatestThreadForProject<
     readonly archivedAt: string | null;
   } & ThreadSortInput,
 >(threads: readonly T[], projectId: ProjectId, sortOrder: SidebarThreadSortOrder): T | null {
-  return (
-    sortThreads(
-      threads.filter((thread) => thread.projectId === projectId && thread.archivedAt === null),
-      sortOrder,
-    )[0] ?? null
-  );
-}
-
-// ── Pinned reorder: fractional index keys ──────────────────────────────
-// Pinned threads carry an optional pinOrderKey (a base-26 string). The
-// pinned block sorts keyed threads by plain string comparison, so a drag
-// (web) or Move up/down (mobile) writes ONE key to ONE thread on that
-// thread's own server — neighbors, possibly living on other servers, are
-// never touched, and every client connected to the same servers converges
-// on the same order.
-const PIN_ORDER_DIGITS = "abcdefghijklmnopqrstuvwxyz";
-
-function isValidPinOrderKey(key: string): boolean {
-  if (key.length === 0) return false;
-  for (const char of key) {
-    if (!PIN_ORDER_DIGITS.includes(char)) return false;
+  let latest: T | null = null;
+  let latestTimestamp = Number.NEGATIVE_INFINITY;
+  for (const thread of threads) {
+    if (thread.projectId !== projectId || thread.archivedAt !== null) continue;
+    const timestamp = getThreadSortTimestamp(thread, sortOrder);
+    if (
+      latest === null ||
+      timestamp > latestTimestamp ||
+      (timestamp === latestTimestamp && thread.id > latest.id)
+    ) {
+      latest = thread;
+      latestTimestamp = timestamp;
+    }
   }
-  // A trailing minimum digit would leave no room to sort a key immediately
-  // before this one; generators never produce it, so treat it as corrupt.
-  return key.at(-1) !== PIN_ORDER_DIGITS[0];
+  return latest;
 }
 
-/** Midpoint of two digit strings interpreted as fractions in (0, 1).
-    "" stands for the open bound on either side. Requires a < b. */
-function pinOrderMidpoint(a: string, b: string): string {
-  if (b !== "" && a >= b) throw new Error("pinOrderMidpoint: bounds out of order");
-  if (b !== "") {
-    // Recurse past the longest common prefix ("a" pads the shorter side).
-    let n = 0;
-    while ((a.charAt(n) || PIN_ORDER_DIGITS[0]) === b.charAt(n)) n += 1;
-    if (n > 0) return b.slice(0, n) + pinOrderMidpoint(a.slice(n), b.slice(n));
-  }
-  const digitA = a === "" ? 0 : PIN_ORDER_DIGITS.indexOf(a.charAt(0));
-  const digitB = b === "" ? PIN_ORDER_DIGITS.length : PIN_ORDER_DIGITS.indexOf(b.charAt(0));
-  if (digitB - digitA > 1) {
-    return PIN_ORDER_DIGITS.charAt(Math.round((digitA + digitB) / 2));
-  }
-  // Consecutive leading digits: either b has spare digits to shorten into,
-  // or we extend a (never producing a trailing minimum digit — the base
-  // case midpoint("", "") is the middle of the alphabet).
-  if (b.length > 1) return b.charAt(0);
-  return PIN_ORDER_DIGITS.charAt(digitA) + pinOrderMidpoint(a.slice(1), "");
-}
-
-/** Key that sorts strictly between two neighbors; null bounds mean "top of
-    the pinned block" / "bottom of the keyed run". Returns null instead of
-    throwing when existing keys are corrupt or out of order — callers fall
-    back to rewriting the section. */
-export function pinOrderKeyBetween(before: string | null, after: string | null): string | null {
-  const a = before ?? "";
-  const b = after ?? "";
-  if (a !== "" && !isValidPinOrderKey(a)) return null;
-  if (b !== "" && !isValidPinOrderKey(b)) return null;
-  if (b !== "" && a >= b) return null;
-  return pinOrderMidpoint(a, b);
-}
-
-/** Evenly spaced keys for rewriting a whole pinned section (used when a
-    drop lands next to keyless threads, so single-key insertion has nothing
-    to anchor on). Two base-26 digits give 675 slots — far beyond any real
-    pinned section — with monotonicity enforced as a belt-and-braces. */
-export function generateSpreadPinOrderKeys(count: number): string[] {
-  const space = PIN_ORDER_DIGITS.length * PIN_ORDER_DIGITS.length;
-  const step = space / (count + 1);
-  const keys: string[] = [];
-  let previous = 0;
-  for (let i = 0; i < count; i += 1) {
-    let value = Math.max(Math.round(step * (i + 1)), previous + 1);
-    // Skip values whose low digit is the minimum (a trailing "a" key).
-    if (value % PIN_ORDER_DIGITS.length === 0) value += 1;
-    value = Math.min(value, space - 1);
-    previous = value;
-    keys.push(
-      PIN_ORDER_DIGITS.charAt(Math.floor(value / PIN_ORDER_DIGITS.length)) +
-        PIN_ORDER_DIGITS.charAt(value % PIN_ORDER_DIGITS.length),
-    );
-  }
-  return keys;
-}
-
-/**
- * Assignments needed to realize a new pinned order. When the moved thread
- * sits between two keyed (or absent) neighbors, this is a single write to
- * the moved thread. When a neighbor is keyless (threads pinned before
- * reordering shipped), the whole section gets fresh spread keys — a
- * one-time materialization; every move after that is single-write.
- */
 export function planPinnedReorder(input: {
-  /** Thread ids in the desired visual order (after the move). */
   readonly orderedIds: readonly string[];
+  /** Include retained keys from hidden rows; only orderedIds receive writes. */
   readonly keysById: ReadonlyMap<string, string | null | undefined>;
   readonly movedId: string;
 }): ReadonlyArray<{ readonly id: string; readonly orderKey: string }> {
   const { orderedIds, keysById, movedId } = input;
+  const visibleIds = new Set(orderedIds);
+  const reservedKeys = new Set(
+    [...keysById].flatMap(([id, key]) => (!visibleIds.has(id) && key != null ? [key] : [])),
+  );
   const movedIndex = orderedIds.indexOf(movedId);
   if (movedIndex === -1) return [];
   const beforeId = movedIndex > 0 ? orderedIds[movedIndex - 1] : null;
@@ -203,23 +207,19 @@ export function planPinnedReorder(input: {
   const beforeUsable = beforeId === null || beforeKey != null;
   const afterUsable = afterId === null || afterKey != null;
   if (beforeUsable && afterUsable) {
-    const key = pinOrderKeyBetween(beforeKey, afterKey);
+    let key = pinOrderKeyBetween(beforeKey, afterKey);
+    while (key !== null && reservedKeys.has(key)) key = pinOrderKeyBetween(key, afterKey);
     if (key !== null) return [{ id: movedId, orderKey: key }];
   }
-  // Keyless neighbor (or corrupt keys): rewrite the section in the new order.
-  const keys = generateSpreadPinOrderKeys(orderedIds.length);
+  const keys = generateSpreadPinOrderKeys(orderedIds.length + reservedKeys.size)
+    .filter((key) => !reservedKeys.has(key))
+    .slice(0, orderedIds.length);
   return orderedIds.flatMap((id, index) => {
     const key = keys[index]!;
     return keysById.get(id) === key ? [] : [{ id, orderKey: key }];
   });
 }
 
-/**
- * Pinned block order: user-arranged keys first (string comparison, id
- * tiebreak), then keyless threads newest-created first — so threads on
- * servers that predate reordering keep the static creation order at the
- * bottom of the block instead of breaking the section.
- */
 export function sortPinnedThreadsByOrderKey<
   T extends {
     readonly id: string;
@@ -231,6 +231,7 @@ export function sortPinnedThreadsByOrderKey<
     readonly environmentId?: string | undefined;
   },
 >(threads: readonly T[]): T[] {
+  if (threads.length < 2) return [...threads];
   const keyed: T[] = [];
   const keyless: T[] = [];
   for (const thread of threads) {
@@ -244,37 +245,60 @@ export function sortPinnedThreadsByOrderKey<
     const rightKey = right.pinOrderKey!;
     return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : identityTiebreak(left, right);
   });
-  keyless.sort((left, right) => {
-    const leftMs = Date.parse(left.createdAt);
-    const rightMs = Date.parse(right.createdAt);
-    return (
-      (Number.isNaN(rightMs) ? 0 : rightMs) - (Number.isNaN(leftMs) ? 0 : leftMs) ||
-      identityTiebreak(left, right)
-    );
-  });
+  const timestamps = new Map(
+    keyless.map((thread) => [thread, toSortableTimestamp(thread.createdAt) ?? 0]),
+  );
+  keyless.sort(
+    (left, right) =>
+      timestamps.get(right)! - timestamps.get(left)! || identityTiebreak(left, right),
+  );
   return [...keyed, ...keyless];
 }
 
+const IMPLIED_KEY_WIDTH = 10;
+const IMPLIED_KEY_MAX_MS = 26 ** IMPLIED_KEY_WIDTH - 1;
+
 /**
- * planPinnedReorder specialized for mobile's Move up / Move down menu
- * actions: swap the moved thread with its displayed neighbor. Null when the
- * move falls off either end of the list. Same single-write-per-move
- * semantics as a web drag.
+ * Sort key for the Active section. A thread nobody arranged takes an implied key from its
+ * anchor time, newest first, in a tier ahead of every arranged key. A move then only writes
+ * the moved thread, even beside threads whose server is offline.
  */
-export function planPinnedMove(input: {
-  /** Reorder-capable pinned thread ids in displayed order. */
-  readonly orderedIds: readonly string[];
-  readonly keysById: ReadonlyMap<string, string | null | undefined>;
-  readonly movedId: string;
-  readonly direction: "up" | "down";
-}): ReadonlyArray<{ readonly id: string; readonly orderKey: string }> | null {
-  const { orderedIds, keysById, movedId, direction } = input;
-  const from = orderedIds.indexOf(movedId);
-  if (from === -1) return null;
-  const to = direction === "up" ? from - 1 : from + 1;
-  if (to < 0 || to >= orderedIds.length) return null;
-  const newOrder = [...orderedIds];
-  newOrder.splice(from, 1);
-  newOrder.splice(to, 0, movedId);
-  return planPinnedReorder({ orderedIds: newOrder, keysById, movedId });
+export function activeThreadSortKey(thread: {
+  readonly createdAt: string;
+  readonly unsettledAt?: string | null | undefined;
+  readonly activeOrderKey?: string | null | undefined;
+}): string {
+  if (thread.activeOrderKey != null) return thread.activeOrderKey;
+  let value =
+    IMPLIED_KEY_MAX_MS -
+    Math.min(Math.max(activeThreadAnchorTimestampMs(thread), 0), IMPLIED_KEY_MAX_MS);
+  let digits = "";
+  for (let index = 0; index < IMPLIED_KEY_WIDTH; index += 1) {
+    digits = String.fromCharCode(97 + (value % 26)) + digits;
+    value = Math.floor(value / 26);
+  }
+  // A trailing "a" leaves no room to place a thread directly above this one.
+  return `${LEADING_ORDER_TIER}${digits}n`;
+}
+
+export function sortActiveThreadsByOrderKey<
+  T extends {
+    readonly id: string;
+    readonly createdAt: string;
+    readonly unsettledAt?: string | null | undefined;
+    readonly activeOrderKey?: string | null | undefined;
+    readonly environmentId?: string | undefined;
+  },
+>(threads: readonly T[]): T[] {
+  if (threads.length < 2) return [...threads];
+  const keys = new Map(threads.map((thread) => [thread, activeThreadSortKey(thread)]));
+  return [...threads].sort((left, right) => {
+    const leftKey = keys.get(left)!;
+    const rightKey = keys.get(right)!;
+    return (
+      (leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0) ||
+      left.id.localeCompare(right.id) ||
+      (left.environmentId ?? "").localeCompare(right.environmentId ?? "")
+    );
+  });
 }
